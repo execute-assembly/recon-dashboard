@@ -8,6 +8,12 @@
 
 set -euo pipefail
 
+if [[ -z "${1:-}" ]]; then
+    echo "Usage: $0 <domain>" >&2
+    exit 1
+fi
+
+DOMAIN=$1
 subs_dir="subdomains"
 probe_dir="probe"
 httpx_dir="probe/httpx"
@@ -33,7 +39,7 @@ check_tools() {
 build_targets() {
     echo -e "${BOLD}${BLUE}[+]${ENDCOLOR} Building targets from port scan results..."
 
-    python3 - "$portscan_dir/ports.json" "$portscan_dir/domain_ips.json" <<'EOF' > "$httpx_dir/targets.txt"
+    python3 - "$portscan_dir/${DOMAIN}_ports.json" "$portscan_dir/${DOMAIN}_domain_ips.json" <<'EOF' > "$httpx_dir/${DOMAIN}_targets.txt"
 import sys, json
 
 ports_file      = sys.argv[1]
@@ -62,14 +68,14 @@ for t in sorted(targets):
     print(t)
 EOF
 
-    echo -e "${BOLD}${GREEN}[*]${ENDCOLOR} Targets crafted: ${BOLD}$(wc -l < "$httpx_dir/targets.txt")${ENDCOLOR} domain:port pairs\n"
+    echo -e "${BOLD}${GREEN}[*]${ENDCOLOR} Targets crafted: ${BOLD}$(wc -l < "$httpx_dir/${DOMAIN}_targets.txt")${ENDCOLOR} domain:port pairs\n"
 }
 
 # ─────────────────────────────────────────────
 httpx_enrich() {
     echo -e "${BOLD}${BLUE}[+]${ENDCOLOR} Probing and enriching targets..."
     httpx -silent -follow-redirects \
-        -l "$httpx_dir/targets.txt" \
+        -l "$httpx_dir/${DOMAIN}_targets.txt" \
         -status-code \
         -title \
         -tech-detect \
@@ -78,8 +84,8 @@ httpx_enrich() {
         -ip \
         -cname \
         -json \
-        -o "$httpx_dir/httpx_enriched.json" > /dev/null 2>&1
-    echo -e "${BOLD}${GREEN}[*]${ENDCOLOR} Enrichment complete: ${BOLD}$(wc -l < "$httpx_dir/httpx_enriched.json") hosts${ENDCOLOR}\n"
+        -o "$httpx_dir/${DOMAIN}_httpx_enriched.json" > /dev/null 2>&1
+    echo -e "${BOLD}${GREEN}[*]${ENDCOLOR} Enrichment complete: ${BOLD}$(wc -l < "$httpx_dir/${DOMAIN}_httpx_enriched.json") hosts${ENDCOLOR}\n"
 }
 
 # ─────────────────────────────────────────────
@@ -87,7 +93,7 @@ httpx_enrich() {
 merge_ports() {
     echo -e "${BOLD}${BLUE}[+]${ENDCOLOR} Merging port data into enriched results..."
 
-    python3 - "$httpx_dir/httpx_enriched.json" "$portscan_dir/ports.json" <<'EOF' > "$httpx_dir/httpx_enriched_merged.json"
+    python3 - "$httpx_dir/${DOMAIN}_httpx_enriched.json" "$portscan_dir/${DOMAIN}_ports.json" <<'EOF' > "$httpx_dir/${DOMAIN}_httpx_enriched_merged.json"
 import sys, json, re
 from urllib.parse import urlparse
 
@@ -127,7 +133,7 @@ for r in results:
 EOF
 
     # replace original with merged
-    mv "$httpx_dir/httpx_enriched_merged.json" "$httpx_dir/httpx_enriched.json"
+    mv "$httpx_dir/${DOMAIN}_httpx_enriched_merged.json" "$httpx_dir/${DOMAIN}_httpx_enriched.json"
     echo -e "${BOLD}${GREEN}[*]${ENDCOLOR} Port data merged into enriched JSON\n"
 }
 
@@ -149,19 +155,19 @@ path_probe() {
         for path in "${paths[@]}"; do
             echo "${base_url}${path}"
         done
-    done < <(jq -r '.url' "$httpx_dir/httpx_enriched.json") > "$httpx_dir/path_targets.txt"
+    done < <(jq -r '.url' "$httpx_dir/${DOMAIN}_httpx_enriched.json") > "$httpx_dir/${DOMAIN}_path_targets.txt"
 
     # probe with httpx, output json
     httpx -silent \
-        -l "$httpx_dir/path_targets.txt" \
+        -l "$httpx_dir/${DOMAIN}_path_targets.txt" \
         -mc 200,201,301,302,403 \
         -status-code \
         -content-length \
         -json \
-        -o "$httpx_dir/path_hits_raw.json" > /dev/null 2>&1
+        -o "$httpx_dir/${DOMAIN}_path_hits_raw.json" > /dev/null 2>&1
 
     # convert json to pipe-delimited url|status|size
-    python3 - "$httpx_dir/path_hits_raw.json" <<'EOF' > "$httpx_dir/path_hits.txt"
+    python3 - "$httpx_dir/${DOMAIN}_path_hits_raw.json" <<'EOF' > "$httpx_dir/${DOMAIN}_path_hits.txt"
 import sys, json
 for line in open(sys.argv[1]):
     line = line.strip()
@@ -176,7 +182,7 @@ for line in open(sys.argv[1]):
         pass
 EOF
 
-    echo -e "${BOLD}${GREEN}[*]${ENDCOLOR} Path hits found: ${BOLD}$(wc -l < "$httpx_dir/path_hits.txt")${ENDCOLOR}\n"
+    echo -e "${BOLD}${GREEN}[*]${ENDCOLOR} Path hits found: ${BOLD}$(wc -l < "$httpx_dir/${DOMAIN}_path_hits.txt")${ENDCOLOR}\n"
 }
 
 # ─────────────────────────────────────────────
@@ -186,8 +192,8 @@ main() {
     httpx_enrich
     merge_ports
     path_probe
-    echo -e "${BOLD}${GREEN}[*]${ENDCOLOR} Enriched JSON: ${BOLD}$httpx_dir/httpx_enriched.json${ENDCOLOR}"
-    echo -e "${BOLD}${GREEN}[*]${ENDCOLOR} Path hits:     ${BOLD}$httpx_dir/path_hits.txt${ENDCOLOR}\n"
+    echo -e "${BOLD}${GREEN}[*]${ENDCOLOR} Enriched JSON: ${BOLD}$httpx_dir/${DOMAIN}_httpx_enriched.json${ENDCOLOR}"
+    echo -e "${BOLD}${GREEN}[*]${ENDCOLOR} Path hits:     ${BOLD}$httpx_dir/${DOMAIN}_path_hits.txt${ENDCOLOR}\n"
 }
 
 main

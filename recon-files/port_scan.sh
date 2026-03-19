@@ -1,6 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 
+if [[ -z "${1:-}" ]]; then
+    echo "Usage: $0 <domain>" >&2
+    exit 1
+fi
+
+DOMAIN=$1
 subs_dir="subdomains"
 probe="probe"
 portscan_dir="probe/port-scan"
@@ -77,9 +83,10 @@ check_ranges_download() {
 
 
 extract_ips_json() {
+    local ips_file=$1
     log_info "Parsing IPs and checking CDN ranges..." >&2
 
-    python3 - "$portscan_dir/ips.txt" "$cdn_ranges" <<'EOF'
+    python3 - "$ips_file" "$cdn_ranges" <<'EOF'
 import sys, json, re, subprocess
 
 ips_file    = sys.argv[1]
@@ -128,30 +135,35 @@ EOF
 }
 
 run_portscan() {
+    local domain_ips_file=$1
+    local masscan_file=$2
+    local ports_file=$3
+    local scan_targets="$portscan_dir/${DOMAIN}_scan_targets.txt"
+
     log_info "Extracting non-CDN IPs for scanning..."
 
     # get unique non-CDN IPs
-    python3 - "$portscan_dir/domain_ips.json" <<'EOF' > "$portscan_dir/scan_targets.txt"
+    python3 - "$domain_ips_file" <<'EOF' > "$scan_targets"
 import sys, json
 entries = json.load(open(sys.argv[1]))
 ips = {ip for e in entries if not e.get("cdn") for ip in e["ips"]}
 print("\n".join(sorted(ips)))
 EOF
 
-    local count=$(wc -l < "$portscan_dir/scan_targets.txt")
+    local count=$(wc -l < "$scan_targets")
     if [[ "$count" -eq 0 ]]; then
         log_ok "All domains are CDN-hosted — skipping masscan"
-        echo '[]' > "$portscan_dir/ports.json"
+        echo '[]' > "$ports_file"
         return
     fi
     log_ok "Scanning $count IPs with masscan..."
 
-    sudo masscan -iL "$portscan_dir/scan_targets.txt" -p0-10000 --rate=20000 -oJ "$portscan_dir/masscan.json" 2>/dev/null \
+    sudo masscan -iL "$scan_targets" -p0-10000 --rate=20000 -oJ "$masscan_file" 2>/dev/null \
         || die "masscan failed"
     log_ok "Masscan complete"
 
     log_info "Building final port JSON..."
-    python3 - "$portscan_dir/domain_ips.json" "$portscan_dir/masscan.json" <<'EOF' > "$portscan_dir/ports.json"
+    python3 - "$domain_ips_file" "$masscan_file" <<'EOF' > "$ports_file"
 import sys, json, collections
 
 entries    = json.load(open(sys.argv[1]))
@@ -183,7 +195,7 @@ for ip, ports in ip_ports.items():
 
 print(json.dumps(results, indent=2))
 EOF
-    log_ok "Final port data saved to $portscan_dir/ports.json"
+    log_ok "Final port data saved to $ports_file"
 }
 
 
@@ -196,14 +208,14 @@ check_tools
 check_ranges_download
 
 log_info "Resolving domains..."
-dnsx -l "$subs_dir/final_subs.txt" -a -resp -o "$portscan_dir/ips.txt" > /dev/null 2>&1 \
+dnsx -l "$subs_dir/final_subs.txt" -a -resp -o "$portscan_dir/${DOMAIN}_ips.txt" > /dev/null 2>&1 \
     || die "dnsx failed"
-[[ -s "$portscan_dir/ips.txt" ]] || die "dnsx resolved no IPs"
+[[ -s "$portscan_dir/${DOMAIN}_ips.txt" ]] || die "dnsx resolved no IPs"
 log_ok "Resolved domains"
 
-extract_ips_json > "$portscan_dir/domain_ips.json" \
+extract_ips_json "$portscan_dir/${DOMAIN}_ips.txt" > "$portscan_dir/${DOMAIN}_domain_ips.json" \
     || die "Failed to build domain/IP mapping"
-[[ -s "$portscan_dir/domain_ips.json" ]] || die "domain_ips.json is empty"
-log_ok "Domain/IP mapping saved to $portscan_dir/domain_ips.json"
+[[ -s "$portscan_dir/${DOMAIN}_domain_ips.json" ]] || die "${DOMAIN}_domain_ips.json is empty"
+log_ok "Domain/IP mapping saved to $portscan_dir/${DOMAIN}_domain_ips.json"
 
-run_portscan
+run_portscan "$portscan_dir/${DOMAIN}_domain_ips.json" "$portscan_dir/${DOMAIN}_masscan.json" "$portscan_dir/${DOMAIN}_ports.json"
