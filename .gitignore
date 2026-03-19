@@ -3,3 +3,7 @@ probe/
 server/
 temp/
 server_desing.md
+CLAUDE.md
+.gitignore
+.claude/
+server2/database/
