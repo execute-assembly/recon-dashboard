@@ -221,6 +221,39 @@
   }
   .status-val { font-family: 'Fira Code', monospace; font-weight: 600; font-size: 18px; }
 
+  /* ── Triage + Notes ── */
+  .triage-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .triage-btn {
+    background: transparent; border: 1px solid var(--border2);
+    color: var(--text-muted); padding: 4px 12px; cursor: pointer;
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.08em; font-family: 'IBM Plex Sans', sans-serif;
+    transition: all 0.1s; border-radius: 0;
+  }
+  .triage-btn:hover { color: var(--text); border-color: var(--text-muted); }
+  .triage-btn.active[data-status="to-test"]  { color: var(--orange); border-color: var(--orange); background: var(--orange-dim); }
+  .triage-btn.active[data-status="dead-end"] { color: var(--red);    border-color: var(--red);    background: var(--red-dim); }
+  .triage-btn.active[data-status="tested"]   { color: var(--green);  border-color: var(--green);  background: var(--green-dim); }
+  .triage-btn.active[data-status="none"]     { color: var(--text-muted); border-color: var(--border2); }
+
+  .notes-area {
+    width: 100%; background: var(--bg); color: var(--text);
+    border: 1px solid var(--border2); padding: 10px 12px;
+    font-family: 'Fira Code', monospace; font-size: 12px;
+    line-height: 1.6; resize: vertical; min-height: 90px;
+    transition: border-color 0.15s; border-radius: 0; outline: none;
+  }
+  .notes-area:focus { border-color: var(--accent); }
+  .notes-area::placeholder { color: var(--text-muted); }
+  .notes-save {
+    margin-top: 8px; background: transparent; border: 1px solid var(--border2);
+    color: var(--text-muted); padding: 5px 14px; cursor: pointer;
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.08em; font-family: 'IBM Plex Sans', sans-serif;
+    transition: all 0.1s; border-radius: 0; float: right;
+  }
+  .notes-save:hover { color: var(--accent); border-color: var(--accent); }
+
   /* ── JS Analysis ── */
   .js-domain-row { cursor: pointer; }
   .js-domain-row td { border-bottom: 1px solid var(--border); }
@@ -260,6 +293,46 @@
   .sev-high   { color: var(--red) !important; }
   .sev-medium { color: var(--orange) !important; }
   .sev-low    { color: var(--yellow) !important; }
+
+  /* ── Toast ── */
+  .toast {
+    position: fixed; top: 64px; right: 28px; z-index: 500;
+    padding: 16px 24px; font-size: 14px; font-weight: 600;
+    border-left: 3px solid; display: flex; align-items: center; gap: 10px;
+    opacity: 0; transform: translateY(-8px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    pointer-events: none; max-width: 380px;
+  }
+  .toast.visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
+  .toast.success { background: var(--surface); border-color: var(--green); color: var(--green); }
+  .toast.error   { background: var(--surface); border-color: var(--red);   color: var(--red); }
+  .toast-msg { color: var(--text); font-weight: 400; }
+
+  /* ── Import button ── */
+  .btn-import {
+    background: transparent; color: var(--green); border: 1px solid var(--green);
+    padding: 5px 14px; cursor: pointer; font-size: 11px; font-weight: 700;
+    font-family: 'IBM Plex Sans', sans-serif; text-transform: uppercase;
+    letter-spacing: 0.08em; transition: all 0.1s; border-radius: 0;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .btn-import:hover:not(:disabled) { background: var(--green-dim); }
+  .btn-import:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-import.loading { color: var(--text-muted); border-color: var(--border2); }
+  .btn-import.error   { color: var(--red);   border-color: var(--red); }
+
+  .import-status {
+    display: none; align-items: center; gap: 8px;
+    font-size: 12px; color: var(--text-muted);
+    font-family: 'Fira Code', monospace;
+  }
+  .import-status.visible { display: flex; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    width: 13px; height: 13px; border: 2px solid var(--border2);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin 0.7s linear infinite; flex-shrink: 0;
+  }
 </style>
 </head>
 <body>
@@ -323,6 +396,13 @@
         <button onclick="toggleCol('t-hosts',7,this)" class="active">CNAME</button>
         <button onclick="toggleCol('t-hosts',8,this)" class="active">Content-Type</button>
       </div>
+      <button class="btn-import" id="btn-import-hosts" onclick="importData(this, 'import-status-hosts')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Import
+      </button>
+      <div class="import-status" id="import-status-hosts">
+        <div class="spinner"></div> Importing data...
+      </div>
     </div>
     <div class="table-wrap">
       <table id="t-hosts">
@@ -355,6 +435,13 @@
       <div class="search-wrap">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         <input type="text" id="search-hits" placeholder="Filter paths..." oninput="filterTable('search-hits','tbody-hits')">
+      </div>
+      <button class="btn-import" id="btn-import-hits" onclick="importData(this, 'import-status-hits')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Import
+      </button>
+      <div class="import-status" id="import-status-hits">
+        <div class="spinner"></div> Importing data...
       </div>
     </div>
     <div class="table-wrap">
@@ -403,6 +490,11 @@
     </div>
   </div>
 
+</div>
+
+<div id="toast" class="toast">
+  <span id="toast-icon"></span>
+  <span class="toast-msg" id="toast-msg"></span>
 </div>
 
 <script>
@@ -525,6 +617,21 @@
         <div class="panel-section-label">Content-Type</div>
         <div class="panel-section-value mono">${val(d.ctype)}</div>
       </div>
+      <div class="panel-divider"></div>
+      <div class="panel-section">
+        <div class="panel-section-label">Triage</div>
+        <div class="triage-btns">
+          ${['none','to-test','dead-end','tested'].map(s => `
+            <button class="triage-btn ${(d.triage_status||'none')===s?'active':''}" data-status="${s}" onclick="setTriage(this,'${escHtml(d.domain_name)}','${s}')">${s}</button>
+          `).join('')}
+        </div>
+      </div>
+      <div class="panel-divider"></div>
+      <div class="panel-section">
+        <div class="panel-section-label">Notes</div>
+        <textarea class="notes-area" id="panel-notes" placeholder="e.g. takes URL param at /search, worth testing...">${escHtml(d.notes||'')}</textarea>
+        <button class="notes-save" onclick="saveNotes('${escHtml(d.domain_name)}')">Save</button>
+      </div>
     `;
 
     document.getElementById('detail-panel').classList.add('open');
@@ -553,7 +660,8 @@
 
   // ── Load hosts ──
   function loadHosts() {
-    fetch('/api/hosts')
+    const domain = localStorage.getItem('recon_target');
+    fetch(`/api/${encodeURIComponent(domain)}/hosts`)
       .then(r => r.json())
       .then(data => {
         const { stats, hosts } = data;
@@ -619,7 +727,8 @@
 
   // ── Load hits ──
   function loadHits() {
-    fetch('/api/hits')
+    const domain = localStorage.getItem('recon_target');
+    fetch(`/api/${encodeURIComponent(domain)}/hits`)
       .then(r => r.json())
       .then(data => {
         const { hits } = data;
@@ -753,6 +862,83 @@
       })
       .catch(err => {
         document.getElementById(`js-loading-${id}`).textContent = `Error: ${err.message}`;
+      });
+  }
+
+  // ── Toast ──
+  let toastTimer = null;
+  function showToast(type, msg) {
+    const toast = document.getElementById('toast');
+    const icon  = document.getElementById('toast-icon');
+    const text  = document.getElementById('toast-msg');
+    icon.textContent  = type === 'success' ? '✓' : '✕';
+    text.textContent  = msg;
+    toast.className   = `toast ${type} visible`;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('visible'), 3500);
+  }
+
+  // ── Triage ──
+  function setTriage(btn, domainName, status) {
+    const domain = localStorage.getItem('recon_target');
+    fetch(`/api/domains/${encodeURIComponent(domainName)}/triage`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain, status }),
+    }).then(r => {
+      if (!r.ok) return;
+      btn.closest('.triage-btns').querySelectorAll('.triage-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  }
+
+  // ── Notes ──
+  function saveNotes(domainName) {
+    const domain = localStorage.getItem('recon_target');
+    const notes  = document.getElementById('panel-notes').value;
+    fetch(`/api/domains/${encodeURIComponent(domainName)}/notes`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain, notes }),
+    }).then(r => {
+      if (!r.ok) return;
+      const btn = document.querySelector('.notes-save');
+      const orig = btn.textContent;
+      btn.textContent = 'Saved';
+      btn.style.color = 'var(--green)';
+      btn.style.borderColor = 'var(--green)';
+      setTimeout(() => { btn.textContent = orig; btn.style.color = ''; btn.style.borderColor = ''; }, 1500);
+    });
+  }
+
+  // ── Import ──
+  function importData(btn, statusId) {
+    const domain = localStorage.getItem('recon_target');
+    if (!domain) return;
+
+    const status = document.getElementById(statusId);
+    btn.disabled = true;
+    btn.classList.add('loading');
+    status.classList.add('visible');
+
+    fetch(`/api/import/${encodeURIComponent(domain)}`, { method: 'POST' })
+      .then(r => {
+        if (!r.ok) return r.text().then(t => { throw new Error(t); });
+        return r.json();
+      })
+      .then(() => {
+        status.classList.remove('visible');
+        btn.classList.remove('loading');
+        btn.disabled = false;
+        showToast('success', 'Data imported successfully!');
+        loadHosts();
+        loadHits();
+      })
+      .catch(err => {
+        status.classList.remove('visible');
+        btn.classList.remove('loading');
+        btn.disabled = false;
+        showToast('error', 'Error importing data: ' + err.message);
       });
   }
 

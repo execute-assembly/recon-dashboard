@@ -4,6 +4,8 @@ import (
     "database/sql"
     "errors"
     "os"
+    "fmt"
+    "sync"
     _ "github.com/mattn/go-sqlite3"
 )
 
@@ -14,15 +16,47 @@ var (
 
 var ErrDomainExists = errors.New("domain already exists")
 
+
+func migrateDB(db *sql.DB) {
+    // SQLite ignores "duplicate column" errors — safe to run on every open
+    db.Exec(`ALTER TABLE domains ADD COLUMN triage_status TEXT NOT NULL DEFAULT ''`)
+    db.Exec(`ALTER TABLE domains ADD COLUMN notes TEXT NOT NULL DEFAULT ''`)
+}
+
+func getDB(domain string) (*sql.DB, error) {
+    mu.Lock()
+    defer mu.Unlock()
+
+    if db, ok := connections[domain]; ok {
+        return db, nil
+    }
+
+    dbPath := "databases/" + domain + "_db.sql"
+    db, err := sql.Open("sqlite3", dbPath)
+    if err != nil {
+        return nil, fmt.Errorf("failed to open database: %w", err)
+    }
+
+    if err := db.Ping(); err != nil {
+        return nil, fmt.Errorf("failed to connect to database: %w", err)
+    }
+
+    migrateDB(db)
+    connections[domain] = db
+    return db, nil
+}
+
+// Handles creating new target database
 func CreateNewTarget(name string) error {
-    fullFileName := "./database/" + name + "_db.sql"
+    fullFileName := "./databases/" + name + "_db.sql"
 
     if _, err := os.Stat(fullFileName); err == nil {
-        return nil, ErrDomainExists
+        return ErrDomainExists
     }
 
     db, err := sql.Open("sqlite3", fullFileName)
     if err != nil {
+        fmt.Println(err)
         return err
     }
 
@@ -41,9 +75,12 @@ func CreateNewTarget(name string) error {
         server       TEXT,
         ips          TEXT,
         cname        TEXT,
-        badges       TEXT
+        badges        TEXT,
+        triage_status TEXT NOT NULL DEFAULT '',
+        notes         TEXT NOT NULL DEFAULT ''
     );`)
     if err != nil {
+        fmt.Println(err)
         return err
     }
 
@@ -55,8 +92,23 @@ func CreateNewTarget(name string) error {
         severity    TEXT
     );`)
     if err != nil {
+        fmt.Println(err)
         return err
     }
 
     return nil
 }
+
+
+
+// Handles importing data from disk
+func ImportData(domain string) error {
+	if err := ImportHttpx(domain); err != nil {
+		return err
+	}
+	if err := ImportPathHits(domain); err != nil {
+		return err
+	}
+	return nil
+}
+

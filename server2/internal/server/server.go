@@ -6,26 +6,34 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"github.com/go-chi/chi/v5"
+	"github.com/execute-assembly/recon-dashboard/internal/database"
 )
 
-func Run() {
-	http.HandleFunc("/api/hosts", HostHandler)
-	http.HandleFunc("/api/hits", JuicyHandler)
-
-	http.HandleFunc("/api/targets/new", NewTargetHandler)
-	http.HandleFunc("/api/targets", TargetHandler)
-
-	http.HandleFunc("/index.html", serveHTML("static/index.html"))
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		serveHTML("static/target.html")(w, r)
-	})
-
-	fmt.Println("[+] Server running on http://127.0.0.1:8080")
-	http.ListenAndServe(":8080", nil)
+type NewTargetJson struct {
+	Domain string `json:"domain"`
 }
 
-// serveHTML reads a file and writes it directly — avoids http.ServeFile's
-// redirect behaviour when the request path ends in /.
+func Run() {
+	r := chi.NewRouter()
+
+	r.Get("/api/{domain}/hosts", HostHandler)
+	r.Get("/api/{domain}/hits", JuicyHandler)
+	r.Post("/api/import/{domain}", ImportHandler)
+
+
+	r.Post("/api/targets/new", NewTargetHandler)
+	r.Get("/api/targets", TargetHandler)
+
+
+	r.Get("/index.html", serveHTML("static/index.html"))
+	r.Get("/*", serveHTML("static/target.html"))
+
+	fmt.Println("[+] Server running on http://127.0.0.1:8080")
+	http.ListenAndServe(":8080", r)
+}
+
+
 func serveHTML(path string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		content, err := os.ReadFile(path)
@@ -39,13 +47,30 @@ func serveHTML(path string) http.HandlerFunc {
 }
 
 func HostHandler(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("HOST"))
+    domain := chi.URLParam(r, "domain")
+    data, err := database.ReadHosts(domain)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(data)
 }
 
 func JuicyHandler(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("JUICY"))
+	domain := chi.URLParam(r, "domain")
+	data, err := database.ReadHits(domain)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"hits": data})
 }
 
+
+// handles retreving the active targets from /databases/<domain>_db.sql, comes from targets.html
 func TargetHandler(w http.ResponseWriter, r *http.Request) {
 	entries, err := os.ReadDir("./databases")
 	if err != nil {
@@ -71,14 +96,9 @@ func TargetHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 
-struct NewTargetJson {
-	Domain string `json:"domain"`
-}
 
+// handles the creation of a new target from /target.html
 func NewTargetHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		return 	http.Error(w, "405 Method Not Allowed", http.StatusMethodNotAllowed)
-	}
 
 	var domain NewTargetJson
 	err := json.NewDecoder(r.Body).Decode(&domain)
@@ -91,6 +111,33 @@ func NewTargetHandler(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Println(domain.Domain)
 
-	
+	err = database.CreateNewTarget(domain.Domain)
 
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"domain": domain.Domain})
+	return 
+
+
+}
+
+// Handles importing data for a target, reads json from disk and stores in DB
+func ImportHandler(w http.ResponseWriter, r *http.Request) {
+	domain := chi.URLParam(r, "domain")
+
+	fmt.Printf("[+] Importing data for %s\n", domain)
+
+	err := database.ImportData(domain)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"domain": "good"})
+	return
 }
