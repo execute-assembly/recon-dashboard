@@ -1,10 +1,10 @@
 package main
 
 import (
-	"fmt";
+	"github.com/execute-assembly/recon-dashboard/internal/server"
 )
 
 
 func main() {
-	fmt.Println("Hello World")
+	server.Run()
 }
