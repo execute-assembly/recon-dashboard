@@ -1,356 +1,167 @@
-# Recon Dashboard — Project Overview
+---
+name: server2 Go dashboard
+description: Architecture, routes, features, and todo for the server2/ Go recon dashboard
+type: project
+---
 
-## What Is It
+Go-powered recon dashboard in server2/. Replaces old Python server/ (ignore server/, use server2/).
 
-A bug bounty / penetration testing reconnaissance automation toolkit with a Go-powered web dashboard. The pipeline discovers subdomains, resolves them, port scans, HTTP probes for live services and sensitive paths, then stores all results in a per-target SQLite database served through a dark-themed interactive dashboard.
+**Why:** Per-target SQLite DBs, triage, notes, and a dark operator-style dashboard for bug bounty recon.
 
-## Why Use It
-
-- Automates the full passive → active recon pipeline in one command
-- Per-target isolated databases — run recon on multiple targets without data mixing
-- Dashboard lets you triage hosts, take notes, and filter findings without leaving the browser
-- Import is on-demand — run recon, come back later, hit Import, data is in the DB
+**How to apply:** All server work targets server2/. Run from recon root: `go run ./server2/cmd/main.go` → http://127.0.0.1:8080
 
 ---
 
-## Repository Layout
+## Key file structure
 
-```
-recon/
-├── recon.sh                          # Orchestrates the full pipeline
-├── recon-files/
-│   ├── subdomain2.sh                 # Stage 1: passive subdomain enumeration
-│   ├── subdomains_active.sh          # Stage 2: DNS resolution + permutation
-│   ├── port_scan.sh <domain>         # Stage 3: CDN detection + masscan
-│   ├── alive_httpx_probe.sh <domain> # Stage 4: HTTP probing + path discovery
-│   └── crawl.sh                      # Optional: web crawling (katana/gau/wayback)
-├── subdomains/
-│   ├── all_subs.txt                  # Stage 1 output
-│   ├── final_subs.txt                # Stage 2 output (DNS-verified)
-│   └── passive/                      # Per-source raw results
-├── probe/
-│   ├── httpx/
-│   │   ├── <domain>_httpx_enriched.json   # JSONL — one host per line
-│   │   ├── <domain>_path_hits.txt         # Pipe-delimited: URL|STATUS|SIZE
-│   │   ├── <domain>_path_hits_raw.json    # Raw httpx output for path hits
-│   │   └── <domain>_targets.txt           # Built domain:port pairs for httpx
-│   └── port-scan/
-│       ├── <domain>_domain_ips.json  # Domain → IP mappings + CDN flag
-│       └── <domain>_ports.json       # Masscan results (IP → open ports)
-├── temp/
-│   └── cdn_ranges.txt                # Cached CDN CIDR blocks (7-day TTL)
-└── server2/                          # Go dashboard server
-    ├── cmd/main.go                   # Entry point → server.Run()
-    ├── go.mod                        # module: github.com/execute-assembly/recon-dashboard
-    ├── databases/
-    │   └── <domain>_db.sql           # Per-target SQLite databases
-    ├── internal/
-    │   ├── database/
-    │   │   ├── types.go              # All structs + PortServices map
-    │   │   ├── db_ops.go             # DB open/cache, CreateNewTarget, ImportData, migrateDB
-    │   │   ├── db_reads.go           # ReadHosts, ReadHits, transformHost, statusClass, splitTrim
-    │   │   └── importHelper.go       # ImportHttpx, ImportPathHits, computeBadges, joinInts
-    │   └── server/
-    │       └── server.go             # Chi router + all HTTP handlers
-    └── static/
-        ├── target.html               # Target selection page (served at /)
-        └── index.html                # Dashboard (served at /index.html)
-```
+| File | Purpose |
+|------|---------|
+| `server2/cmd/main.go` | Entry point, calls `server.Run()` |
+| `server2/internal/server/server.go` | Chi v5 router + all HTTP handlers |
+| `server2/internal/database/types.go` | Structs: HttpxEntry, Host, HostResponse, HitResponse, Stats, HostsResult, PortServices |
+| `server2/internal/database/db_ops.go` | getDB (cached connections), CreateNewTarget, ImportData, migrateDB, WriteNote, UpdateTriage |
+| `server2/internal/database/importHelper.go` | ImportHttpx, ImportPathHits, computeBadges, severityFromStatus |
+| `server2/internal/database/db_reads.go` | ReadHosts, ReadHits, transformHost, statusClass, splitTrim |
+| `server2/static/target.html` | Target selection page (/) — table layout, async per-target stats, filter, delete |
+| `server2/static/index.html` | Main dashboard (/index.html) — tabs: Host Enumeration, Juicy Hits, JS Analysis, Overview |
+| `server2/static/css/dashboard.css` | Single stylesheet for index.html (Uncodixify spec, steel blue accent #4d9fff) |
+| `server2/static/js/panel.js` | Detail side panel, triage buttons, notes save |
+| `server2/static/js/hosts.js` | Hosts table render, group by hostname, expand/collapse child rows, triage tags |
+| `server2/static/js/hits.js` | Juicy hits table render |
+| `server2/static/js/overview.js` | Overview tab: sidebar list, host detail, screenshot, port scan, triage, notes |
+| `server2/static/js/utils.js` | escHtml, showToast, filterTable, sortTable, renderBadges, showTab, collapseAll |
+| `server2/databases/<domain>_db.sql` | Per-target SQLite files (gitignored) |
+| `server2/backups/` | CSS/HTML backups: orange_dashboard.css, orange_target.html, dashboard_original.css, etc. |
 
 ---
 
-## Recon Pipeline
+## Active API routes
 
-```
-Stage 1 — subdomain2.sh
-  Tools: subfinder, crt.sh (curl), github-subdomains
-  Output: subdomains/all_subs.txt
+### Target-level
+| Method | Route | Handler | Notes |
+|--------|-------|---------|-------|
+| GET | `/api/targets` | `TargetHandler` | Lists targets from `./databases/*_db.sql` |
+| POST | `/api/targets/new` | `NewTargetHandler` | Creates new SQLite DB for domain |
+| POST | `/api/import/{domain}` | `ImportHandler` | Reads probe JSON from disk, upserts into DB |
+| GET | `/api/{domain}/hosts` | `HostHandler` | Returns `{ stats, hosts[] }` |
+| GET | `/api/{domain}/hits` | `JuicyHandler` | Returns `{ hits[] }` |
 
-Stage 2 — subdomains_active.sh
-  Tools: puredns (10k/2k rate limit), alterx (permutations)
-  Resolvers: downloaded from trickest/resolvers, fallback to SecLists
-  Output: subdomains/final_subs.txt
+### Host-level
+| Method | Route | Handler | Notes |
+|--------|-------|---------|-------|
+| PATCH | `/api/{domain}/host/{hostURL}/triage` | `TriageHandler` | Body: `{ domain, status }` — updates triage_status |
+| PATCH | `/api/{domain}/host/{hostURL}/notes` | `NotesHandler` | Body: `{ domain, notes }` — updates notes |
 
-Stage 3 — port_scan.sh <domain>
-  Tools: dnsx, grepcidr, masscan (sudo, ports 0-10000 at 20k pps)
-  CDN ranges: Cloudflare, Fastly, AWS CloudFront, GCP, Akamai, Incapsula, Sucuri
-  Output: probe/port-scan/<domain>_domain_ips.json, probe/port-scan/<domain>_ports.json
+### Stubbed (commented out, not yet implemented)
+| Method | Route | Notes |
+|--------|-------|-------|
+| POST | `/api/{domain}/host/{hostURL}/screenshot` | Frontend calls this; handler doesn't exist yet |
+| POST | `/api/{domain}/host/{hostURL}/portscan` | Frontend calls this; handler doesn't exist yet |
+| DELETE | `/api/delete/{domain}` | Frontend delete button calls this; handler doesn't exist yet |
 
-Stage 4 — alive_httpx_probe.sh <domain>
-  Tools: httpx
-  CDN domains default ports: 80,443,8080,8443,8000,8888,3000,9090,4443,8081,9443,2087,2083,9200
-  Sensitive paths probed: .git/config, .env, robots.txt, sitemap.xml,
-    crossdomain.xml, clientaccesspolicy.xml, .well-known/security.txt,
-    api/swagger, api/swagger.json, api/openapi.json, v1/swagger,
-    actuator, actuator/env, actuator/mappings, phpinfo.php,
-    server-status, server-info, wp-admin, wp-config.php.bak, .DS_Store
-  Match codes: 200, 201, 301, 302, 403
-  Output: probe/httpx/<domain>_httpx_enriched.json (JSONL)
-          probe/httpx/<domain>_path_hits.txt (pipe-delimited: URL|STATUS|SIZE)
-```
-
-Run everything: `./recon.sh <domain>` from the recon root.
+### Static file serving
+- `/css/*`, `/js/*` — served from `static/` via `http.FileServer` middleware wrapper (runs before Chi routing)
+- `*.png`, `*.jpg`, `*.jpeg`, `*.gif`, `*.webp`, `/images/*` — also served via FileServer (added for screenshot display)
+- `/index.html` → `static/index.html`
+- `/*` (catch-all) → `static/target.html`
 
 ---
 
-## Go Server
+## Frontend features (implemented)
 
-**Module:** `github.com/execute-assembly/recon-dashboard`
-**Dependencies:** `github.com/go-chi/chi/v5`, `github.com/mattn/go-sqlite3`
-**Runs on:** `http://127.0.0.1:8080`
-**Run from:** recon root — all paths (`./databases/`, `../probe/httpx/`) are relative to cwd
+### target.html
+- Table of targets (not cards) — domain, total hosts, 200 OK, 403, 5xx loaded async per-target from `/api/{domain}/hosts`
+- Active target highlighted with accent left-border + "active" badge
+- Filter input, target count, summary bar (totals across all targets)
+- "+ New Target" modal → `POST /api/targets/new`
+- Delete button per row → `DELETE /api/delete/{domain}` (frontend wired, backend stub missing)
+- Clicking row or Select → sets `localStorage.recon_target`, redirects to `/index.html`
 
-### Starting the server
+### index.html tabs
+- **Host Enumeration** — sortable table, grouped by hostname with expand/collapse child rows, triage tags on rows, column toggles (IPs/CNAME/Content-Type), Import button
+- **Juicy Hits** — path hits table grouped by domain, severity badges
+- **JS Analysis** — JS endpoint/secret analysis table (expand per domain)
+- **Overview** — collapsible sidebar (300px, ◀/▶ toggle) with host list + filter; main panel shows screenshot, port scan, host info grid, path hits, triage buttons, notes
 
-```bash
-cd /home/kali/recon
-go run ./server2/cmd/main.go
-```
+### Detail panel (side panel on hosts tab)
+- Opens on row click, shows all host fields
+- Triage buttons (none/to-test/dead-end/tested) → `PATCH /api/{domain}/host/{hostURL}/triage`
+- Notes textarea + Save → `PATCH /api/{domain}/host/{hostURL}/notes`
+- "Overview ↗" button jumps to Overview tab and selects host
 
----
-
-## HTTP Routes
-
-| Method | Path | Handler | Status | Description |
-|--------|------|---------|--------|-------------|
-| GET | `/` | `serveHTML` | ✅ Done | Serves `target.html` |
-| GET | `/index.html` | `serveHTML` | ✅ Done | Serves `index.html` |
-| GET | `/api/targets` | `TargetHandler` | ✅ Done | Lists `databases/*.sql` files |
-| POST | `/api/targets/new` | `NewTargetHandler` | ✅ Done | Creates DB + schema for domain |
-| POST | `/api/import/{domain}` | `ImportHandler` | ✅ Done | Reads probe files → upserts into DB |
-| GET | `/api/{domain}/hosts` | `HostHandler` | ✅ Done | Queries domains table → HostsResult JSON |
-| GET | `/api/{domain}/hits` | `JuicyHandler` | ✅ Done | Queries juicy_hits → `{"hits":[...]}` |
-| PATCH | `/api/{domain}/triage` | — | 📋 Planned | Updates triage_status for a host row |
-| PATCH | `/api/{domain}/notes` | — | 📋 Planned | Updates notes for a host row |
-
-### Request / Response shapes
-
-**POST /api/targets/new**
-```json
-// request
-{ "domain": "powercor.com.au" }
-// response 200
-{ "domain": "powercor.com.au" }
-// response 400 (already exists or empty)
-domain already exists
-```
-
-**GET /api/targets**
-```json
-{ "targets": ["powercor.com.au", "test.com.au"] }
-```
-
-**POST /api/import/{domain}** — body empty, domain in URL
-```json
-// response 200
-{ "domain": "good" }
-```
-
-**GET /api/{domain}/hosts**
-```json
-{
-  "stats": { "total": 120, "s200": 80, "s403": 30, "s500": 5 },
-  "hosts": [
-    {
-      "id": 1,
-      "url": "https://admin.powercor.com.au",
-      "status": "200",
-      "sc": "s200",
-      "title": "Admin Portal",
-      "server": "nginx",
-      "tech": ["PHP", "WordPress"],
-      "ips": ["1.2.3.4"],
-      "cname": [],
-      "ctype": "text/html",
-      "ports": [{"port": "443", "service": "HTTPS"}],
-      "badges": ["interesting"],
-      "triage_status": "to-test",
-      "notes": "login panel, worth testing"
-    }
-  ]
-}
-```
-
-**GET /api/{domain}/hits**
-```json
-{
-  "hits": [
-    {
-      "url": "https://admin.powercor.com.au/.env",
-      "status": "200",
-      "sc": "s200",
-      "size": "1024",
-      "severity": "high"
-    }
-  ]
-}
-```
-
-**PATCH /api/{domain}/triage** *(planned)*
-```json
-// request body: { "domain_name": "https://admin.powercor.com.au", "status": "to-test" }
-// triage_status values: none | to-test | dead-end | tested
-```
-
-**PATCH /api/{domain}/notes** *(planned)*
-```json
-// request body: { "domain_name": "https://admin.powercor.com.au", "notes": "SQL injection at /search" }
-```
+### Overview tab actions
+- **Take Screenshot** button → `POST /api/{domain}/host/{hostURL}/screenshot` (backend stub missing)
+- **Scan Ports** button → `POST /api/{domain}/host/{hostURL}/portscan` (backend stub missing)
+- Screenshot auto-loads on host select via `GET /api/{domain}/host/{hostURL}/screenshot`
 
 ---
 
-## Database Schema
-
-One SQLite file per target: `server2/databases/<domain>_db.sql`
+## DB schema (current — flat, comma-separated)
 
 ```sql
-CREATE TABLE IF NOT EXISTS domains (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    domain_name   TEXT UNIQUE,      -- full URL e.g. https://admin.example.com:8443
-    status_code   TEXT,
-    open_ports    TEXT,             -- comma-separated: "80, 443, 8080"
-    title         TEXT,
-    tech_stack    TEXT,             -- comma-separated: "nginx, PHP"
-    content_type  TEXT,
-    server        TEXT,
-    ips           TEXT,             -- comma-separated: "1.2.3.4, 5.6.7.8"
-    cname         TEXT,
-    badges        TEXT,             -- comma-separated: "interesting,api"
-    triage_status TEXT NOT NULL DEFAULT '',  -- none | to-test | dead-end | tested
-    notes         TEXT NOT NULL DEFAULT ''
+CREATE TABLE domains (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  domain_name    TEXT UNIQUE,
+  status         TEXT,
+  title          TEXT,
+  server         TEXT,
+  tech           TEXT,  -- comma-separated
+  ports          TEXT,  -- JSON: [{port, service}]
+  ips            TEXT,  -- comma-separated
+  cname          TEXT,  -- comma-separated
+  ctype          TEXT,
+  triage_status  TEXT DEFAULT 'none',
+  notes          TEXT DEFAULT '',
+  badges         TEXT   -- JSON array
 );
 
-CREATE TABLE IF NOT EXISTS juicy_hits (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    url         TEXT UNIQUE,
-    status_code TEXT,
-    size        TEXT,
-    severity    TEXT               -- high | medium | low
+CREATE TABLE path_hits (
+  id       INTEGER PRIMARY KEY AUTOINCREMENT,
+  domain   TEXT,
+  url      TEXT,
+  status   INTEGER,
+  size     INTEGER,
+  severity TEXT
 );
 ```
 
-### Migration
+---
 
-`migrateDB()` runs on every `getDB()` call (i.e. first use of any domain). It runs:
-```sql
-ALTER TABLE domains ADD COLUMN triage_status TEXT NOT NULL DEFAULT ''
-ALTER TABLE domains ADD COLUMN notes TEXT NOT NULL DEFAULT ''
-```
-SQLite returns an error if the column already exists — this error is silently ignored. Safe to run repeatedly.
+## Important data notes
+- Probe files read from `../probe/httpx/<domain>_httpx_enriched.json` (JSONL) and `../probe/httpx/<domain>_path_hits.txt`
+- IP field in httpx JSON is `"a"` (DNS A record) → `HttpxEntry.IPs []string \`json:"a"\``
+- ON CONFLICT upsert on `domain_name` preserves `triage_status`/`notes` on re-import
+- Severity: 2xx→high, 5xx→medium, else→low
+- Badges: "interesting" (login/admin/dashboard etc), "api" (api/swagger/openapi/graphql)
+- `hostURL` Chi URL params must be `url.QueryUnescape`d — stored decoded in DB
 
-### Severity classification (computed at import from path_hits.txt)
-
-| Severity | HTTP Status |
-|----------|-------------|
-| `high` | 2xx |
-| `medium` | 5xx |
-| `low` | everything else (403 etc.) |
-
-### Badge classification (computed at import from httpx_enriched.json)
-
-| Badge | Trigger words in URL or title |
-|-------|-------------------------------|
-| `interesting` | login, admin, dashboard, portal, jenkins, grafana, kibana, gitlab, jira, confluence, phpmyadmin, cpanel, wp-admin |
-| `api` | api, swagger, openapi, graphql |
+## Color theme
+- Steel blue accent: `--accent: #4d9fff`, `--accent-dim: #0a1a30`
+- Orange backup available: `server2/backups/orange_dashboard.css` + `orange_target.html`
+- Follows Uncodixify spec (skills/Deign.md): no uppercase label overload, no transform animations, shadow max 8px, opacity transitions only
 
 ---
 
-## Data Formats (probe files on disk)
+## TODO next
 
-**`probe/httpx/<domain>_httpx_enriched.json`** — JSONL, one JSON object per line
-```json
-{
-  "url": "https://admin.powercor.com.au",
-  "status_code": 200,
-  "title": "Admin Portal",
-  "tech": ["nginx", "PHP:7.4"],
-  "content_type": "text/html",
-  "webserver": "nginx/1.18",
-  "a": ["1.2.3.4"],
-  "cname": ["admin.cdn.example.com"],
-  "open_ports": [80, 443, 8080]
-}
-```
-**Important:** IP field is `"a"` (DNS A record), not `"ip"`. This maps to `HttpxEntry.IPs []string \`json:"a"\``.
+1. **Screenshot route** — implement `POST /api/{domain}/host/{hostURL}/screenshot`
+   - Run `gowitness` or `chromium --headless` against the host URL, save PNG to `./screenshots/{domain}/{encoded_url}.png`
+   - Implement `GET /api/{domain}/host/{hostURL}/screenshot` to serve the PNG file
+   - Remove hardcoded `/test-screenshot.png` from `overview.js`
 
-**`probe/httpx/<domain>_path_hits.txt`** — pipe-delimited, one hit per line
-```
-https://admin.powercor.com.au/.env|200|1024
-https://api.powercor.com.au/actuator|200|512
-```
+2. **Port scan route** — implement `POST /api/{domain}/host/{hostURL}/portscan`
+   - Fire-and-forget pattern: POST starts scan (returns immediately), poll `GET /api/{domain}/host/{hostURL}/portscan` for status + results
+   - Run `nmap` or `masscan` against resolved IPs for the host
+   - Store results in DB (see TODO #3 for schema)
 
----
+3. **DB schema refactor** — remove comma-separated columns, add junction tables
+   - `ips` table: `(id, domain_id, ip TEXT)`
+   - `cnames` table: `(id, domain_id, cname TEXT)`
+   - `tech` table: `(id, domain_id, tech TEXT)`
+   - `open_ports` table: `(id, ip TEXT, port INT, service TEXT)` — keyed by IP not domain, since IPs can be shared across domains
+   - `ReadHosts` does Go-side join to assemble `Host` struct (avoids complex SQL joins)
+   - Migration: write `migrateDB` version bump to create new tables, backfill from existing comma-separated data
 
-## Go Package Structure
-
-### `internal/database/types.go`
-All shared types:
-- `HttpxEntry` — JSON struct for parsing httpx_enriched.json lines
-- `Host` — raw DB row (all string fields, comma-sep arrays)
-- `HostResponse` — JSON response shape (arrays split out, ports mapped to services)
-- `Port` — `{port string, service string}`
-- `HitResponse` — JSON response for juicy_hits rows
-- `Stats` — `{total, s200, s403, s500}`
-- `HostsResult` — `{stats Stats, hosts []HostResponse}` — top-level /hosts response
-- `PortServices` — `map[int]string` mapping port numbers to service names
-
-### `internal/database/db_ops.go`
-- `getDB(domain)` — opens/caches SQLite connection, runs `migrateDB`
-- `migrateDB(db)` — adds triage_status + notes columns if missing (errors ignored)
-- `CreateNewTarget(name)` — checks existence, creates DB file + both tables
-- `ImportData(domain)` — calls `ImportHttpx` then `ImportPathHits`
-
-### `internal/database/importHelper.go`
-- `ImportHttpx(domain)` — reads `../probe/httpx/<domain>_httpx_enriched.json`, bulk upserts into `domains` table; ON CONFLICT preserves triage_status/notes
-- `ImportPathHits(domain)` — reads `../probe/httpx/<domain>_path_hits.txt`, bulk upserts into `juicy_hits`
-- `computeBadges(url, title)` — returns comma-sep badge string
-- `joinInts([]int)` — converts port int slice to comma-sep string
-- `severityFromStatus(status)` — 2xx→high, 5xx→medium, else→low
-
-### `internal/database/db_reads.go`
-- `ReadHosts(domain)` — returns `HostsResult` with inline stats
-- `ReadHits(domain)` — returns `[]HitResponse` (caller wraps in `{"hits":[...]}`)
-- `transformHost(h Host)` — splits comma-sep strings, maps ports to service names, computes SC class
-- `statusClass(code)` — `"200"→"s200"`, `"403"→"s403"`, `"4xx"→"s400"`, else `""`
-- `splitTrim(s)` — splits comma-separated string, trims whitespace, drops empties
-
-### `internal/server/server.go`
-- Chi v5 router
-- `serveHTML(path)` — uses `os.ReadFile` (NOT `http.ServeFile` — that redirects on dirs)
-- All handlers: `HostHandler`, `JuicyHandler`, `ImportHandler`, `TargetHandler`, `NewTargetHandler`
-
----
-
-## Frontend Pages
-
-### target.html (/)
-- Fetches `GET /api/targets` on load, renders a card per domain
-- **Select** → `localStorage.setItem('recon_target', domain)` → navigate to `/index.html`
-- **New Target** button → modal → `POST /api/targets/new` → refresh list
-- Same dark theme CSS variables as index.html
-
-### index.html (/index.html)
-- Reads `localStorage.getItem('recon_target')` for the active domain
-- Three tabs: **Host Enumeration**, **Juicy Hits**, **JS Analysis**
-- **Import button** (Hosts + Hits tabs) → spinner → `POST /api/import/${domain}` → toast notification → reloads table
-- Toast: top-right, green/red, slides down, 3.5s auto-dismiss
-- **Detail panel** (click any host row) → slides in from right, shows full host info
-  - Triage buttons: none / to-test / dead-end / tested → `PATCH /api/{domain}/triage` *(handler pending)*
-  - Notes textarea + Save button → `PATCH /api/{domain}/notes` *(handler pending)*
-
----
-
-## Remaining Work
-
-1. **PATCH `/api/{domain}/triage`** handler + `UpdateTriage(domain, domainName, status string)` DB function
-2. **PATCH `/api/{domain}/notes`** handler + `UpdateNotes(domain, domainName, notes string)` DB function
-3. Wire triage/notes PATCH calls in index.html detail panel JS
-
----
-
-## Security Notes
-
-- GitHub token hardcoded in `recon-files/subdomain2.sh` line ~46 — **rotate and move to `$GITHUB_TOKEN` env var**
-- Server binds to `127.0.0.1:8080` only — do not expose externally
-- `masscan` requires sudo
-- All recon must only target domains with explicit written authorisation
+4. **Delete target route** — implement `DELETE /api/delete/{domain}`
+   - Remove `./databases/{domain}_db.sql`
+   - Frontend already wired: sends `DELETE /api/delete/{domain}`, removes row on 2xx
