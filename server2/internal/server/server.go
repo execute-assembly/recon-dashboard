@@ -36,8 +36,7 @@ func Run() {
 	r.Get("/index.html", serveHTML("static/index.html"))
 	r.Get("/*", serveHTML("static/target.html"))
 
-	// Wrap Chi so static assets are served before route matching.
-	// Keeps /css/* and /js/* working regardless of Chi route changes.
+	// Middleware wrapper serves /css/* and /js/* before Chi route matching.
 	fs := http.FileServer(http.Dir("static"))
 	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		p := req.URL.Path
