@@ -1,9 +1,19 @@
+# ── Recon pipeline output ──
 subdomains/
 probe/
-server/
 temp/
-server_desing.md
-CLAUDE.md
-.gitignore
+
+# ── Databases ──
+server2/databases/
+
+# ── Old server ──
+/server/
+
+# ── Claude ──
 .claude/
-server2/database/
+
+# ── Misc ──
+server_desing.md
+claude.MEM
+*.db
+*.sql

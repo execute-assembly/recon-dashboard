@@ -105,10 +105,21 @@ function renderOverviewContent(host, hostHits) {
     <div class="ov-body">
 
       <div class="ov-section">
-        <div class="ov-section-title">Screenshot</div>
-        <div class="ov-screenshot" id="ov-screenshot-wrap">
-          <span>No screenshot available</span>
+        <div class="ov-section-title action-section">
+          Screenshot
+          <button class="ov-action-btn" id="ov-screenshot-btn" onclick="takeScreenshot('${escHtml(host.url)}')">Take Screenshot</button>
         </div>
+        <div class="ov-screenshot" id="ov-screenshot-wrap">
+          <img src="/test-screenshot.png" style="max-width:100%;max-height:360px;display:block;">
+        </div>
+      </div>
+
+      <div class="ov-section">
+        <div class="ov-section-title action-section">
+          Port Scan
+          <button class="ov-action-btn" id="ov-portscan-btn" onclick="scanPorts('${escHtml(host.url)}')">Scan Ports</button>
+        </div>
+        <div id="ov-portscan-result" style="font-size:13px;color:var(--text-muted);margin-top:8px">No scan run yet.</div>
       </div>
 
       <div class="ov-section">
@@ -156,5 +167,55 @@ function renderOverviewContent(host, hostHits) {
     const wrap = document.getElementById('ov-screenshot-wrap');
     if (wrap) { wrap.innerHTML = ''; wrap.appendChild(img); }
   };
-  img.src = `/api/${encodeURIComponent(domain)}/screenshot/${encodeURIComponent(host.url)}`;
+  img.src = `/api/${encodeURIComponent(domain)}/host/${encodeURIComponent(host.url)}/screenshot`;
+}
+
+// ── Screenshot ──
+function takeScreenshot(hostURL) {
+  const domain = localStorage.getItem('recon_target');
+  const btn = document.getElementById('ov-screenshot-btn');
+  btn.textContent = 'Running...';
+  btn.disabled = true;
+  fetch(`/api/${encodeURIComponent(domain)}/host/${encodeURIComponent(hostURL)}/screenshot`, { method: 'POST' })
+    .then(r => {
+      btn.disabled = false;
+      if (!r.ok) { btn.textContent = 'Failed'; showToast('error', 'Screenshot failed'); return; }
+      btn.textContent = 'Take Screenshot';
+      const wrap = document.getElementById('ov-screenshot-wrap');
+      const img = new Image();
+      img.onload = () => { if (wrap) { wrap.innerHTML = ''; wrap.appendChild(img); } };
+      img.src = `/api/${encodeURIComponent(domain)}/host/${encodeURIComponent(hostURL)}/screenshot?t=${Date.now()}`;
+      showToast('success', 'Screenshot captured');
+    })
+    .catch(() => { btn.disabled = false; btn.textContent = 'Take Screenshot'; showToast('error', 'Screenshot failed'); });
+}
+
+// ── Port Scan ──
+function scanPorts(hostURL) {
+  const domain = localStorage.getItem('recon_target');
+  const btn    = document.getElementById('ov-portscan-btn');
+  const result = document.getElementById('ov-portscan-result');
+  btn.textContent = 'Scanning...';
+  btn.disabled = true;
+  result.textContent = 'Scan in progress...';
+  fetch(`/api/${encodeURIComponent(domain)}/host/${encodeURIComponent(hostURL)}/portscan`, { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+      btn.disabled = false;
+      btn.textContent = 'Scan Ports';
+      if (data.ports && data.ports.length) {
+        result.innerHTML = data.ports.map(p =>
+          `<span class="tech-pill"><span style="color:var(--accent)">${escHtml(p.port)}</span> <span style="color:var(--text-muted)">— ${escHtml(p.service)}</span></span>`
+        ).join('');
+      } else {
+        result.textContent = 'No open ports found.';
+      }
+      showToast('success', 'Port scan complete');
+    })
+    .catch(() => {
+      btn.disabled = false;
+      btn.textContent = 'Scan Ports';
+      result.textContent = 'Scan failed.';
+      showToast('error', 'Port scan failed');
+    });
 }

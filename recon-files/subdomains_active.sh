@@ -78,12 +78,13 @@ check_tools() {
 
 mutate_words() {
 	count=$(wc -l < "$active_dir/resolved.txt")
+	echo "Count: $count"
 
 	if [ "$count" -lt 50 ]; then
 		  echo -e "${BOLD}${YELLOW}[!]${ENDCOLOR} Low subdomain count ($count), enriching with wordlist..."
-		  cat "$active_dir/resolved.txt" | alterx -enrich -wordlist "$wordlist" -o "$active_dir/mutated.txt" > /dev/null 2>&1
+		  cat "$active_dir/resolved.txt" | alterx -enrich -pp "$wordlist" -o "$active_dir/mutated.txt" #> /dev/null 2>&1
 	else
-		  alterx -list "$active_dir/resolved.txt" -enrich -o "$active_dir/mutated.txt" > /dev/null 2>&1
+		  alterx -list "$active_dir/resolved.txt" -enrich -o "$active_dir/mutated.txt" #> /dev/null 2>&1
 	fi
 
 	if [[ ! -s "$active_dir/mutated.txt" ]]; then

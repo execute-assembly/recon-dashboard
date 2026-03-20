@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"github.com/go-chi/chi/v5"
@@ -19,14 +20,25 @@ type NoteStruct struct {
 	Note   string `json:"notes"`
 }
 
+
+//  {domain} -> target level e.g domain.com
+//  {hostURL} -> host level, e.g https://domain.com:443 -> routes need url decoding!
+
 func Run() {
 	r := chi.NewRouter()
 
 	r.Get("/api/{domain}/hosts", HostHandler)
 	r.Get("/api/{domain}/hits", JuicyHandler)
-	r.Patch("/api/{domain}/notes", NotesHandler)
+
+	r.Patch("/api/{domain}/host/{hostURL}/triage", TriageHandler)
+	r.Patch("/api/{domain}/host/{hostURL}/notes", NotesHandler)
+	// r.Post( "/api/{domain}/host/{hostURL}/screenshot", ScreenShotHandler)
+	// r.Post( "/api/{domain}/host/{hostURL}/portscan", PortScanHandler)
+
 	r.Post("/api/import/{domain}", ImportHandler)
-	//r.Patch("/api/{domain}/traige", TriageHandler)
+	//r.Post("/api/delete/{domain}", deleteTargetHandler)
+
+	
 
 
 	r.Post("/api/targets/new", NewTargetHandler)
@@ -40,7 +52,7 @@ func Run() {
 	fs := http.FileServer(http.Dir("static"))
 	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		p := req.URL.Path
-		if strings.HasPrefix(p, "/css/") || strings.HasPrefix(p, "/js/") {
+		if strings.HasPrefix(p, "/css/") || strings.HasPrefix(p, "/js/") || strings.HasPrefix(p, "/images/") || strings.HasSuffix(p, ".png") || strings.HasSuffix(p, ".jpg") || strings.HasSuffix(p, ".jpeg") || strings.HasSuffix(p, ".gif") || strings.HasSuffix(p, ".webp") {
 			fs.ServeHTTP(w, req)
 			return
 		}
@@ -65,15 +77,49 @@ func serveHTML(path string) http.HandlerFunc {
 }
 
 
-// func TriageHandler(w http.ResponseWriter, r *http.Request) {
-// 	domain := chi.URLParam(r, "domain")
+type TriageData struct {
+	Domain string `json:"domain"`
+	Status string `json:"status"`
+}
+
+func TriageHandler(w http.ResponseWriter, r *http.Request) {
+	domain := chi.URLParam(r, "domain")
+	hostURL, _ := url.QueryUnescape(chi.URLParam(r, "hostURL"))
+
+// 	Triage sends:
+  // - PATCH /api/domains/{hostURL}/triage
+  // - Body: { domain: "<target>", status: "<none|to-test|dead-end|tested>" }
+  // - Expects: any 2xx, doesn't read the body at all
 
 
-// }
+	var data TriageData
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"status": "Failed to decode json"})
+		return
+	}
+
+	err := database.UpdateTriage(domain, hostURL, data.Status)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"status": "failed to insert"})
+		return
+	}
+
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "Status updated!"})
+	return 
+
+
+
+}
 
 
 func NotesHandler(w http.ResponseWriter, r *http.Request) {
-	//domain := chi.URLParam(r, "domain")
+	domain := chi.URLParam(r, "domain")
 	var data NoteStruct
 	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -82,7 +128,9 @@ func NotesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hostURL := chi.URLParam(r, "domain")
+	hostURL, _ := url.QueryUnescape(chi.URLParam(r, "hostURL"))
+
+	fmt.Printf("[+] data.Domain: %s\n[+] hostURL: %s\n[+] data.Note: %s\n", domain, hostURL, data.Note)
 	err := database.WriteNote(data.Domain, hostURL, data.Note)
 	if err != nil {
 		fmt.Println(err)

@@ -80,10 +80,13 @@ function loadHosts() {
         const expandBtn  = multi
           ? `<button class="expand-btn" onclick="toggleGroup(event,${gid})">&#9654; ${total} hosts</button>`
           : '';
+        const triageTag  = (h.triage_status && h.triage_status !== 'none')
+          ? `<span class="triage-tag" data-status="${h.triage_status}">${h.triage_status}</span>`
+          : '';
 
         html += `
           <tr onclick="openPanel(this)" data-host="${hostData}" class="primary-row" style="cursor:pointer">
-            <td><a href="${escHtml(h.url)}" target="_blank" onclick="event.stopPropagation()">${escHtml(h.url)}</a>${renderBadges(h.badges)}${expandBtn}</td>
+            <td><a href="${escHtml(h.url)}" target="_blank" onclick="event.stopPropagation()">${escHtml(h.url)}</a>${renderBadges(h.badges)}${triageTag}${expandBtn}</td>
             <td class="${h.sc}">${h.status}</td>
             <td>${escHtml(h.title)}</td>
             <td>${escHtml(h.server)}</td>
@@ -98,9 +101,12 @@ function loadHosts() {
           const cData       = escHtml(JSON.stringify(c));
           const cPortsShort = c.ports.map(p => p.port).join(', ') || '-';
           const cTechStr    = c.tech.join(', ') || '-';
+          const cTriageTag  = (c.triage_status && c.triage_status !== 'none')
+            ? `<span class="triage-tag" data-status="${c.triage_status}">${c.triage_status}</span>`
+            : '';
           html += `
             <tr onclick="openPanel(this)" data-host="${cData}" data-group="${gid}" class="child-row" style="display:none;cursor:pointer">
-              <td style="padding-left:28px"><a href="${escHtml(c.url)}" target="_blank" onclick="event.stopPropagation()">${escHtml(c.url)}</a>${renderBadges(c.badges)}</td>
+              <td style="padding-left:28px"><a href="${escHtml(c.url)}" target="_blank" onclick="event.stopPropagation()">${escHtml(c.url)}</a>${renderBadges(c.badges)}${cTriageTag}</td>
               <td class="${c.sc}">${c.status}</td>
               <td>${escHtml(c.title)}</td>
               <td>${escHtml(c.server)}</td>

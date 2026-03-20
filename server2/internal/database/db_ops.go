@@ -112,18 +112,36 @@ func ImportData(domain string) error {
 	return nil
 }
 
-func WriteNote(target string, note string) error {
+func WriteNote(target string, hostURL string, note string) error {
     db, err := getDB(target)
     if err != nil {
         fmt.Println(err)
         return err
     }
 
-    _, err = db.Exec("UPDATE domains SET notes = ? WHERE domain_name = ?", note, target)
+    _, err = db.Exec("UPDATE domains SET notes = ? WHERE domain_name = ?", note, hostURL)
     if err != nil {
         fmt.Println(err)
         return err
     }
 
     return nil
+}
+
+func UpdateTriage(target string, hostURL string, triageStatus string) error {
+
+    fmt.Printf("target: %s\nHost: %s\n, status: %s\n", target, hostURL, triageStatus)
+
+    db, err := getDB(target)
+    if err != nil {
+        return err
+    }
+
+    _, err = db.Exec("UPDATE domains SET triage_status = ? WHERE domain_name = ?", triageStatus, hostURL)
+    if err != nil {
+        return err
+    }
+
+    return nil
+
 }

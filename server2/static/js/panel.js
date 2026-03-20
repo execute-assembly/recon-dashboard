@@ -104,7 +104,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closePanel()
 // ── Triage ──
 function setTriage(btn, domainName, status) {
   const domain = localStorage.getItem('recon_target');
-  fetch(`/api/domains/${encodeURIComponent(domainName)}/triage`, {
+  fetch(`/api/${encodeURIComponent(domain)}/host/${encodeURIComponent(domainName)}/triage`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ domain, status }),
@@ -112,6 +112,23 @@ function setTriage(btn, domainName, status) {
     if (!r.ok) return;
     btn.closest('.triage-btns').querySelectorAll('.triage-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
+    const host = allHosts.find(h => h.url === domainName);
+    if (host) {
+      host.triage_status = status;
+      // update the tag in the hosts table row
+      const row = document.querySelector(`tr[data-host*="${domainName.replace(/"/g, '\\"')}"]`);
+      if (row) {
+        const existing = row.querySelector('.triage-tag');
+        if (existing) existing.remove();
+        if (status && status !== 'none') {
+          const tag = document.createElement('span');
+          tag.className = 'triage-tag';
+          tag.dataset.status = status;
+          tag.textContent = status;
+          row.querySelector('td').appendChild(tag);
+        }
+      }
+    }
   });
 }
 
@@ -119,7 +136,7 @@ function setTriage(btn, domainName, status) {
 function saveNotes(domainName, elId = 'panel-notes') {
   const domain = localStorage.getItem('recon_target');
   const notes  = document.getElementById(elId).value;
-  fetch(`/api/${encodeURIComponent(domainName)}/notes`, {
+  fetch(`/api/${encodeURIComponent(domain)}/host/${encodeURIComponent(domainName)}/notes`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ domain, notes }),
