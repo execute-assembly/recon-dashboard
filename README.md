@@ -81,6 +81,16 @@ cd /path/to/recon && go run ./server2/cmd/main.go
 
 ---
 
+## Screenshots
+
+**Target selection**
+![Target Selection](targets.png)
+
+**Dashboard**
+![Dashboard](dashboard.png)
+
+---
+
 ## Dashboard
 
 The Go dashboard (`server2/`) runs on `http://127.0.0.1:8080`.
