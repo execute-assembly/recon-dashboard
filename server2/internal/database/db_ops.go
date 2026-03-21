@@ -22,7 +22,7 @@ func migrateDB(db *sql.DB) {
     db.Exec(`ALTER TABLE domains ADD COLUMN triage_status TEXT NOT NULL DEFAULT ''`)
     db.Exec(`ALTER TABLE domains ADD COLUMN notes TEXT NOT NULL DEFAULT ''`)
 }
-
+        
 func getDB(domain string) (*sql.DB, error) {
     mu.Lock()
     defer mu.Unlock()

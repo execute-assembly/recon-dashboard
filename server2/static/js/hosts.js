@@ -84,9 +84,12 @@ function loadHosts() {
           ? `<span class="triage-tag" data-status="${h.triage_status}">${h.triage_status}</span>`
           : '';
 
+        const metaRow = (renderBadges(h.badges) || triageTag)
+          ? `<div class="url-meta">${renderBadges(h.badges)}${triageTag}</div>` : '';
+
         html += `
           <tr onclick="openPanel(this)" data-host="${hostData}" class="primary-row" style="cursor:pointer">
-            <td><a href="${escHtml(h.url)}" target="_blank" onclick="event.stopPropagation()">${escHtml(h.url)}</a>${renderBadges(h.badges)}${triageTag}${expandBtn}</td>
+            <td class="url-cell"><div class="url-line"><a href="${escHtml(h.url)}" target="_blank" onclick="event.stopPropagation()">${escHtml(h.url)}</a>${expandBtn}</div>${metaRow}</td>
             <td class="${h.sc}">${h.status}</td>
             <td>${escHtml(h.title)}</td>
             <td>${escHtml(h.server)}</td>
@@ -104,9 +107,11 @@ function loadHosts() {
           const cTriageTag  = (c.triage_status && c.triage_status !== 'none')
             ? `<span class="triage-tag" data-status="${c.triage_status}">${c.triage_status}</span>`
             : '';
+          const cMetaRow = (renderBadges(c.badges) || cTriageTag)
+            ? `<div class="url-meta">${renderBadges(c.badges)}${cTriageTag}</div>` : '';
           html += `
             <tr onclick="openPanel(this)" data-host="${cData}" data-group="${gid}" class="child-row" style="display:none;cursor:pointer">
-              <td style="padding-left:28px"><a href="${escHtml(c.url)}" target="_blank" onclick="event.stopPropagation()">${escHtml(c.url)}</a>${renderBadges(c.badges)}${cTriageTag}</td>
+              <td class="url-cell" style="padding-left:28px"><div class="url-line"><a href="${escHtml(c.url)}" target="_blank" onclick="event.stopPropagation()">${escHtml(c.url)}</a></div>${cMetaRow}</td>
               <td class="${c.sc}">${c.status}</td>
               <td>${escHtml(c.title)}</td>
               <td>${escHtml(c.server)}</td>
