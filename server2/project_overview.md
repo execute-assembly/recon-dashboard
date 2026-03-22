@@ -162,6 +162,4 @@ CREATE TABLE path_hits (
    - `ReadHosts` does Go-side join to assemble `Host` struct (avoids complex SQL joins)
    - Migration: write `migrateDB` version bump to create new tables, backfill from existing comma-separated data
 
-4. **Delete target route** — implement `DELETE /api/delete/{domain}`
-   - Remove `./databases/{domain}_db.sql`
-   - Frontend already wired: sends `DELETE /api/delete/{domain}`, removes row on 2xx
+4. ~~**Delete target route**~~ — ✅ done (`deleteTargetHandler` + `database.DeleteData()`)
