@@ -1,0 +1,8 @@
+time=2026-03-21T23:58:31.032Z level=INFO msg="New Target Created" domain=adad
+time=2026-03-21T23:58:33.695Z level=DEBUG msg="Importing Data" domain=winna.com
+time=2026-03-22T00:08:22.683Z level=DEBUG msg="Deleting Data" domain=adaasd
+time=2026-03-22T00:08:22.683Z level=INFO msg="Deleted Data" path=./databases/adaasd_db.sql
+time=2026-03-22T00:08:24.196Z level=DEBUG msg="Deleting Data" domain=adad
+time=2026-03-22T00:08:24.196Z level=INFO msg="Deleted Data" path=./databases/adad_db.sql
+time=2026-03-22T00:08:25.703Z level=DEBUG msg="Deleting Data" domain=asda
+time=2026-03-22T00:08:25.703Z level=INFO msg="Deleted Data" path=./databases/asda_db.sql

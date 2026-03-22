@@ -1,70 +1,85 @@
 package database
 
 import (
-    "database/sql"
-    "errors"
-    "os"
-    "fmt"
-    "sync"
-    _ "github.com/mattn/go-sqlite3"
+	"database/sql"
+	"errors"
+	"fmt"
+	"log/slog"
+	"os"
+	"sync"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 var (
-    connections = map[string]*sql.DB{}
-    mu          sync.Mutex
+	connections = map[string]*sql.DB{}
+	mu          sync.Mutex
 )
 
 var ErrDomainExists = errors.New("domain already exists")
 
-
 func migrateDB(db *sql.DB) {
-    // SQLite ignores "duplicate column" errors — safe to run on every open
-    db.Exec(`ALTER TABLE domains ADD COLUMN triage_status TEXT NOT NULL DEFAULT ''`)
-    db.Exec(`ALTER TABLE domains ADD COLUMN notes TEXT NOT NULL DEFAULT ''`)
+	// SQLite ignores "duplicate column" errors — safe to run on every open
+	db.Exec(`ALTER TABLE domains ADD COLUMN triage_status TEXT NOT NULL DEFAULT ''`)
+	db.Exec(`ALTER TABLE domains ADD COLUMN notes TEXT NOT NULL DEFAULT ''`)
 }
-        
+
+const dbDir = "./databases"
+
+func dbPath(domain string) string {
+	return dbDir + "/" + domain + "_db.sql"
+}
+
 func getDB(domain string) (*sql.DB, error) {
-    mu.Lock()
-    defer mu.Unlock()
+	mu.Lock()
+	defer mu.Unlock()
 
-    if db, ok := connections[domain]; ok {
-        return db, nil
-    }
+	if db, ok := connections[domain]; ok {
+		return db, nil
+	}
 
-    dbPath := "databases/" + domain + "_db.sql"
-    db, err := sql.Open("sqlite3", dbPath)
-    if err != nil {
-        return nil, fmt.Errorf("failed to open database: %w", err)
-    }
+	Path := dbPath(domain)
+	db, err := sql.Open("sqlite3", Path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
 
-    if err := db.Ping(); err != nil {
-        return nil, fmt.Errorf("failed to connect to database: %w", err)
-    }
+	if err := db.Ping(); err != nil {
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
+	}
 
-    migrateDB(db)
-    connections[domain] = db
-    return db, nil
+	migrateDB(db)
+	connections[domain] = db
+	return db, nil
 }
 
 // Handles creating new target database
 func CreateNewTarget(name string) error {
-    fullFileName := "./databases/" + name + "_db.sql"
 
-    if _, err := os.Stat(fullFileName); err == nil {
-        return ErrDomainExists
-    }
+	if _, err := os.Stat("./databases"); errors.Is(err, os.ErrNotExist) {
+		err := os.Mkdir("./databases", 0755)
+		if err != nil {
+			return err
+		}
+	}
 
-    db, err := sql.Open("sqlite3", fullFileName)
-    if err != nil {
-        fmt.Println(err)
-        return err
-    }
+	fullFileName := dbPath(name)
 
-    mu.Lock()
-    connections[name] = db
-    mu.Unlock()
+	if _, err := os.Stat(fullFileName); err == nil {
+		return ErrDomainExists
+	}
 
-    _, err = db.Exec(`CREATE TABLE IF NOT EXISTS domains (
+	db, err := sql.Open("sqlite3", fullFileName)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+
+	mu.Lock()
+	connections[name] = db
+	mu.Unlock()
+
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS domains (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
         domain_name  TEXT UNIQUE,
         status_code  TEXT,
@@ -79,69 +94,88 @@ func CreateNewTarget(name string) error {
         triage_status TEXT NOT NULL DEFAULT '',
         notes         TEXT NOT NULL DEFAULT ''
     );`)
-    if err != nil {
-        fmt.Println(err)
-        return err
-    }
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
 
-    _, err = db.Exec(`CREATE TABLE IF NOT EXISTS juicy_hits (
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS juicy_hits (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
         url         TEXT UNIQUE,
         status_code TEXT,
         size        TEXT,
         severity    TEXT
     );`)
-    if err != nil {
-        fmt.Println(err)
-        return err
-    }
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
 
-    return nil
+	slog.Info("New Target Created", "domain", name)
+
+	return nil
 }
-
-
 
 // Handles importing data from disk
 func ImportData(domain string) error {
+	slog.Debug("Importing Data", "domain", domain)
+
 	if err := ImportHttpx(domain); err != nil {
+		slog.Error("Failed Loading httpx data", "domain", domain)
 		return err
 	}
 	if err := ImportPathHits(domain); err != nil {
+		slog.Error("Failed Loading Path-Hits data", "domain", domain)
 		return err
 	}
 	return nil
 }
 
+func DeleteData(domain string) error {
+	slog.Debug("Deleting Data", "domain", domain)
+
+	dbPath := dbPath(domain)
+
+	err := os.Remove(dbPath)
+	if err != nil {
+		slog.Error("Failed Deleting Data", "path", dbPath)
+		return err
+	}
+
+	slog.Info("Deleted Data", "path", dbPath)
+
+	return nil
+
+}
+
 func WriteNote(target string, hostURL string, note string) error {
-    db, err := getDB(target)
-    if err != nil {
-        fmt.Println(err)
-        return err
-    }
+	db, err := getDB(target)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
 
-    _, err = db.Exec("UPDATE domains SET notes = ? WHERE domain_name = ?", note, hostURL)
-    if err != nil {
-        fmt.Println(err)
-        return err
-    }
+	_, err = db.Exec("UPDATE domains SET notes = ? WHERE domain_name = ?", note, hostURL)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
 
-    return nil
+	return nil
 }
 
 func UpdateTriage(target string, hostURL string, triageStatus string) error {
 
-    fmt.Printf("target: %s\nHost: %s\n, status: %s\n", target, hostURL, triageStatus)
+	db, err := getDB(target)
+	if err != nil {
+		return err
+	}
 
-    db, err := getDB(target)
-    if err != nil {
-        return err
-    }
+	_, err = db.Exec("UPDATE domains SET triage_status = ? WHERE domain_name = ?", triageStatus, hostURL)
+	if err != nil {
+		return err
+	}
 
-    _, err = db.Exec("UPDATE domains SET triage_status = ? WHERE domain_name = ?", triageStatus, hostURL)
-    if err != nil {
-        return err
-    }
-
-    return nil
+	return nil
 
 }

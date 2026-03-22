@@ -138,6 +138,20 @@
   .btn-danger:hover { background: var(--red-dim); border-color: var(--red); }
   .btn-danger:disabled { opacity: 0.4; cursor: not-allowed; }
 
+  /* ── Toast ── */
+  .toast {
+    position: fixed; bottom: 24px; right: 24px; z-index: 999;
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface); border: 1px solid var(--border2);
+    padding: 10px 16px; font-size: 13px; color: var(--text);
+    opacity: 0; pointer-events: none; transition: opacity 0.2s;
+  }
+  .toast.visible { opacity: 1; pointer-events: auto; }
+  .toast.success { border-left: 3px solid var(--green); }
+  .toast.error   { border-left: 3px solid var(--red); }
+  .toast-icon.success { color: var(--green); }
+  .toast-icon.error   { color: var(--red); }
+
   /* ── Empty state ── */
   .empty-state {
     border: 1px dashed var(--border2); padding: 48px 24px;
@@ -364,6 +378,18 @@
     window.location.href = '/index.html';
   }
 
+  // ── Toast ──
+  let toastTimer = null;
+  function showToast(type, msg) {
+    const toast = document.getElementById('toast');
+    toast.className = `toast ${type} visible`;
+    toast.querySelector('.toast-icon').className = `toast-icon ${type}`;
+    toast.querySelector('.toast-icon').textContent = type === 'success' ? '✓' : '✕';
+    toast.querySelector('.toast-msg').textContent = msg;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('visible'), 3500);
+  }
+
   // ── Delete target ──
   function deleteTarget(domain, idx) {
     const btn = document.getElementById(`del-${idx}`);
@@ -371,21 +397,27 @@
     btn.disabled = true;
     btn.textContent = '...';
     fetch(`/api/delete/${encodeURIComponent(domain)}`, { method: 'DELETE' })
-      .then(r => {
-        if (!r.ok) throw new Error('failed');
+      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok) {
+          showToast('error', data.status || 'Delete failed');
+          btn.disabled = false;
+          btn.textContent = 'Delete';
+          return;
+        }
+        showToast('success', data.status || 'Deleted');
         const row = document.querySelector(`tr[data-domain="${CSS.escape(domain)}"]`);
         if (row) row.remove();
-        // update active target display if it was the deleted one
         if (domain === localStorage.getItem('recon_target')) {
           localStorage.removeItem('recon_target');
           document.getElementById('header-active-val').textContent = 'none';
         }
-        // update target count
         const remaining = document.querySelectorAll('#target-tbody tr:not(.hidden)').length;
         document.getElementById('ph-meta').textContent = `${remaining} target${remaining !== 1 ? 's' : ''}`;
         document.getElementById('sb-targets').textContent = remaining;
       })
       .catch(() => {
+        showToast('error', 'Delete failed');
         btn.disabled = false;
         btn.textContent = 'Delete';
       });
@@ -440,5 +472,11 @@
 
   loadTargets();
 </script>
+
+<div id="toast" class="toast">
+  <span class="toast-icon"></span>
+  <span class="toast-msg"></span>
+</div>
+
 </body>
 </html>

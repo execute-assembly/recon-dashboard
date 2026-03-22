@@ -3,12 +3,14 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
-	"github.com/go-chi/chi/v5"
+
 	"github.com/execute-assembly/recon-dashboard/internal/database"
+	"github.com/go-chi/chi/v5"
 )
 
 type NewTargetJson struct {
@@ -20,30 +22,27 @@ type NoteStruct struct {
 	Note   string `json:"notes"`
 }
 
-
 //  {domain} -> target level e.g domain.com
 //  {hostURL} -> host level, e.g https://domain.com:443 -> routes need url decoding!
 
 func Run() {
 	r := chi.NewRouter()
 
-	r.Get("/api/{domain}/hosts", HostHandler)
-	r.Get("/api/{domain}/hits", JuicyHandler)
+	r.Get("/api/{domain}/hosts", Host_Handler)
+	r.Get("/api/{domain}/hits", Juicy_Handler)
 
-	r.Patch("/api/{domain}/host/{hostURL}/triage", TriageHandler)
-	r.Patch("/api/{domain}/host/{hostURL}/notes", NotesHandler)
-	// r.Post( "/api/{domain}/host/{hostURL}/screenshot", ScreenShotHandler)
-	// r.Post( "/api/{domain}/host/{hostURL}/portscan", PortScanHandler)
+	r.Patch("/api/{domain}/host/{hostURL}/triage", Triage_Handler)
+	r.Patch("/api/{domain}/host/{hostURL}/notes", Notes_Handler)
+
+	//r.Post("/api/{domain}/host/{hostURL}/screenshot", ScreenShot_Handler)
+	// r.Get("/api/{domain}/host/{hostURL}/screenshot/status, ScreenShotStatus_Handler)
+	// r.Post( "/api/{domain}/host/{hostURL}/portscan", PortScan_Handler)
 
 	r.Post("/api/import/{domain}", ImportHandler)
-	//r.Post("/api/delete/{domain}", deleteTargetHandler)
-
-	
-
+	r.Delete("/api/delete/{domain}", deleteTargetHandler)
 
 	r.Post("/api/targets/new", NewTargetHandler)
-	r.Get("/api/targets", TargetHandler)
-
+	r.Get("/api/targets", Targets_Handler)
 
 	r.Get("/index.html", serveHTML("static/index.html"))
 	r.Get("/*", serveHTML("static/target.html"))
@@ -63,7 +62,6 @@ func Run() {
 	http.ListenAndServe(":8080", handler)
 }
 
-
 func serveHTML(path string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		content, err := os.ReadFile(path)
@@ -76,101 +74,84 @@ func serveHTML(path string) http.HandlerFunc {
 	}
 }
 
-
 type TriageData struct {
 	Domain string `json:"domain"`
 	Status string `json:"status"`
 }
 
-func TriageHandler(w http.ResponseWriter, r *http.Request) {
+func writeJSON(w http.ResponseWriter, status int, msg any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(msg)
+}
+
+func Triage_Handler(w http.ResponseWriter, r *http.Request) {
 	domain := chi.URLParam(r, "domain")
 	hostURL, _ := url.QueryUnescape(chi.URLParam(r, "hostURL"))
 
-// 	Triage sends:
-  // - PATCH /api/domains/{hostURL}/triage
-  // - Body: { domain: "<target>", status: "<none|to-test|dead-end|tested>" }
-  // - Expects: any 2xx, doesn't read the body at all
-
-
 	var data TriageData
 	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"status": "Failed to decode json"})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"status": "Failed to decode json"})
 		return
 	}
 
 	err := database.UpdateTriage(domain, hostURL, data.Status)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"status": "failed to insert"})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"status": "failed to insert"})
 		return
 	}
 
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "Status updated!"})
-	return 
-
-
+	writeJSON(w, http.StatusOK, map[string]string{"status": "Status updated!"})
+	return
 
 }
 
-
-func NotesHandler(w http.ResponseWriter, r *http.Request) {
+func Notes_Handler(w http.ResponseWriter, r *http.Request) {
 	domain := chi.URLParam(r, "domain")
-	var data NoteStruct
-	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"status": "Failed to decode json"})
-		return
-	}
-
 	hostURL, _ := url.QueryUnescape(chi.URLParam(r, "hostURL"))
 
-	fmt.Printf("[+] data.Domain: %s\n[+] hostURL: %s\n[+] data.Note: %s\n", domain, hostURL, data.Note)
-	err := database.WriteNote(data.Domain, hostURL, data.Note)
-	if err != nil {
-		fmt.Println(err)
+	var data NoteStruct
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+		slog.Error("Failed To Insert Json in Notes", "hostURL", hostURL)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"status": "Failed to decode json"})
+		return
+	}
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"status": "failed to insert"})
+	err := database.WriteNote(domain, hostURL, data.Note)
+	if err != nil {
+		slog.Error("Failed To Insert Note", "hostURL", hostURL)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"status": "failed to insert"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "Note added!"})
+}
+
+func Host_Handler(w http.ResponseWriter, r *http.Request) {
+	domain := chi.URLParam(r, "domain")
+	data, err := database.ReadHosts(domain)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"status": error.Error(err)})
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "Note added!"})
+	json.NewEncoder(w).Encode(data)
 }
 
-func HostHandler(w http.ResponseWriter, r *http.Request) {
-    domain := chi.URLParam(r, "domain")
-    data, err := database.ReadHosts(domain)
-    if err != nil {
-        http.Error(w, err.Error(), http.StatusInternalServerError)
-        return
-    }
-
-    w.Header().Set("Content-Type", "application/json")
-    json.NewEncoder(w).Encode(data)
-}
-
-func JuicyHandler(w http.ResponseWriter, r *http.Request) {
+func Juicy_Handler(w http.ResponseWriter, r *http.Request) {
 	domain := chi.URLParam(r, "domain")
 	data, err := database.ReadHits(domain)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"status": error.Error(err)})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"hits": data})
 }
 
-
 // handles retreving the active targets from /databases/<domain>_db.sql, comes from targets.html
-func TargetHandler(w http.ResponseWriter, r *http.Request) {
+func Targets_Handler(w http.ResponseWriter, r *http.Request) {
 	entries, err := os.ReadDir("./databases")
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -194,33 +175,28 @@ func TargetHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string][]string{"targets": targets})
 }
 
-
-
 // handles the creation of a new target from /target.html
 func NewTargetHandler(w http.ResponseWriter, r *http.Request) {
 
 	var domain NewTargetJson
 	err := json.NewDecoder(r.Body).Decode(&domain)
 	if err != nil {
-		http.Error(w, "domain cannot be empty", http.StatusBadRequest) 
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"status": error.Error(err)})
 		return
 	}
 
 	defer r.Body.Close()
 
-	fmt.Println(domain.Domain)
-
 	err = database.CreateNewTarget(domain.Domain)
 
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"status": error.Error(err)})
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"domain": domain.Domain})
-	return 
-
+	return
 
 }
 
@@ -228,15 +204,26 @@ func NewTargetHandler(w http.ResponseWriter, r *http.Request) {
 func ImportHandler(w http.ResponseWriter, r *http.Request) {
 	domain := chi.URLParam(r, "domain")
 
-	fmt.Printf("[+] Importing data for %s\n", domain)
-
 	err := database.ImportData(domain)
 
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"status": error.Error(err)})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"domain": "good"})
+	return
+}
+
+func deleteTargetHandler(w http.ResponseWriter, r *http.Request) {
+	domain := chi.URLParam(r, "domain")
+
+	if err := database.DeleteData(domain); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"status": "Failed Deleting Data."})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "Data Deleted Succesfully!"})
+
 	return
 }
