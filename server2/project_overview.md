@@ -144,10 +144,20 @@ CREATE TABLE path_hits (
 
 ## TODO next
 
-1. **Screenshot route** — implement `POST /api/{domain}/host/{hostURL}/screenshot`
-   - Run `gowitness` or `chromium --headless` against the host URL, save PNG to `./screenshots/{domain}/{encoded_url}.png`
-   - Implement `GET /api/{domain}/host/{hostURL}/screenshot` to serve the PNG file
-   - Remove hardcoded `/test-screenshot.png` from `overview.js`
+1. **Screenshot route** — 🔧 in progress
+   - `internal/tools/screenshot.go` — job map (`map[string]JobResult`), `sync.RWMutex`, `GetJob()`, `SetJob()`; `Screenshot(domain, uuid)` sets pending, runs gowitness, sets done/failed
+   - `ScreenShot_Handler` in `routes.go` — generates uuid token, calls `go tools.Screenshot(hostURL, id)`, needs to return token to client
+   - **Next:** `Screenshot()` needs to save to `temp/<domain>/`, grab file, rename to `images/<domain>_ss.jpeg`; wire up `SetJob` done/failed based on `exec` result
+   - **Next:** implement `GET /api/{domain}/host/{hostURL}/screenshot/status` — calls `GetJob(token)`: pending → return waiting, failed → return failed + delete job, done → return success + path
+   - **Next:** implement `GET /api/{domain}/host/{hostURL}/screenshot` to serve the saved image file
+   - **Next:** remove hardcoded `/test-screenshot.png` from `overview.js`
+
+   **Flow:**
+   ```
+   POST /screenshot → handler makes token → go Screenshot(domain, token)
+   Screenshot() → SetJob(pending) → runs gowitness → SetJob(done|failed)
+   GET  /screenshot/status → GetJob(token) → pending|failed(+delete)|done
+   ```
 
 2. **Port scan route** — implement `POST /api/{domain}/host/{hostURL}/portscan`
    - Fire-and-forget pattern: POST starts scan (returns immediately), poll `GET /api/{domain}/host/{hostURL}/portscan` for status + results
