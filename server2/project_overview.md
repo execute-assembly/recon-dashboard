@@ -14,24 +14,43 @@ Go-powered recon dashboard in server2/. Replaces old Python server/ (ignore serv
 
 ## Key file structure
 
+### Backend (Go)
 | File | Purpose |
 |------|---------|
-| `server2/cmd/main.go` | Entry point, calls `server.Run()` |
-| `server2/internal/server/server.go` | Chi v5 router + all HTTP handlers |
+| `server2/cmd/main.go` | Entry point, sets up logging, calls `server.Run()` |
+| `server2/internal/server/server.go` | Chi v5 router, middleware, static file serving |
+| `server2/internal/server/routes.go` | All HTTP handler functions |
 | `server2/internal/database/types.go` | Structs: HttpxEntry, Host, HostResponse, HitResponse, Stats, HostsResult, PortServices |
-| `server2/internal/database/db_ops.go` | getDB (cached connections), CreateNewTarget, ImportData, migrateDB, WriteNote, UpdateTriage |
+| `server2/internal/database/db_ops.go` | getDB (cached connections), CreateNewTarget, ImportData, migrateDB, WriteNote, UpdateTriage, DeleteData |
 | `server2/internal/database/importHelper.go` | ImportHttpx, ImportPathHits, computeBadges, severityFromStatus |
-| `server2/internal/database/db_reads.go` | ReadHosts, ReadHits, transformHost, statusClass, splitTrim |
-| `server2/static/target.html` | Target selection page (/) — table layout, async per-target stats, filter, delete |
-| `server2/static/index.html` | Main dashboard (/index.html) — tabs: Host Enumeration, Juicy Hits, JS Analysis, Overview |
-| `server2/static/css/dashboard.css` | Single stylesheet for index.html (Uncodixify spec, steel blue accent #4d9fff) |
-| `server2/static/js/panel.js` | Detail side panel, triage buttons, notes save |
-| `server2/static/js/hosts.js` | Hosts table render, group by hostname, expand/collapse child rows, triage tags |
-| `server2/static/js/hits.js` | Juicy hits table render |
-| `server2/static/js/overview.js` | Overview tab: sidebar list, host detail, screenshot, port scan, triage, notes |
-| `server2/static/js/utils.js` | escHtml, showToast, filterTable, sortTable, renderBadges, showTab, collapseAll |
+| `server2/internal/database/db_reads.go` | ReadHosts, ReadHits, ReadHostsForAI, transformHost, statusClass, splitTrim, DomainForAI struct |
+| `server2/internal/tools/screenshot.go` | Async screenshot job system: job map, RWMutex, GetJob/SetJob, Screenshot(), SanitizeForFilename() |
+| `server2/internal/tools/ai.go` | AI triage: systemPrompt, AnalyiseDomains(), AnlyiseBatch() — calls Haiku, strips markdown, prints raw JSON |
+
+### Frontend (React + TypeScript)
+| File | Purpose |
+|------|---------|
+| `server2/frontend/src/main.tsx` | React entry point |
+| `server2/frontend/src/App.tsx` | React Router setup — `/` → TargetsPage, `/dashboard` → DashboardPage |
+| `server2/frontend/src/lib/types.ts` | TypeScript interfaces: Host, Hit, HostStats |
+| `server2/frontend/src/pages/TargetsPage.tsx` | Target selection — table, stats, new target modal, delete |
+| `server2/frontend/src/pages/DashboardPage.tsx` | Dashboard shell — tab switcher, fetches hosts + hits, passes to tabs |
+| `server2/frontend/src/pages/HostsTab.tsx` | Host enumeration table — virtual list, group/expand, filter, sort, hide, triage tags, import |
+| `server2/frontend/src/pages/HitsTab.tsx` | Juicy hits table — severity badges, filter, sort by severity |
+| `server2/frontend/src/pages/OverviewTab.tsx` | Overview — sidebar host list, screenshot viewer/capture, host info, triage, notes |
+| `server2/frontend/src/pages/HostPanel.tsx` | Side panel — host detail, triage, notes, "Overview ↗" link |
+| `server2/frontend/src/styles/globals.css` | Dark theme (Uncodixify spec, steel blue #4d9fff accent) |
+| `server2/frontend/vite.config.ts` | Vite build config — dev proxy `/api` + `/images` → http://127.0.0.1:8080 |
+
+### Built output + data
+| Path | Purpose |
+|------|---------|
+| `server2/static/dist/` | Vite build output — served by Go FileServer |
+| `server2/static/images/screenshots/` | Cached screenshot files (served at `/images/screenshots/`) |
 | `server2/databases/<domain>_db.sql` | Per-target SQLite files (gitignored) |
-| `server2/backups/` | CSS/HTML backups: orange_dashboard.css, orange_target.html, dashboard_original.css, etc. |
+| `server2/backups/` | Old CSS/HTML backups (orange theme, originals) — not in use |
+
+> **Note:** `server2/static/js/` and `server2/static/css/` are the old vanilla JS/CSS — no longer served. Everything is React now via `static/dist/`.
 
 ---
 
@@ -40,59 +59,83 @@ Go-powered recon dashboard in server2/. Replaces old Python server/ (ignore serv
 ### Target-level
 | Method | Route | Handler | Notes |
 |--------|-------|---------|-------|
-| GET | `/api/targets` | `TargetHandler` | Lists targets from `./databases/*_db.sql` |
+| GET | `/api/targets` | `Targets_Handler` | Lists targets from `./databases/*_db.sql` |
 | POST | `/api/targets/new` | `NewTargetHandler` | Creates new SQLite DB for domain |
 | POST | `/api/import/{domain}` | `ImportHandler` | Reads probe JSON from disk, upserts into DB |
-| GET | `/api/{domain}/hosts` | `HostHandler` | Returns `{ stats, hosts[] }` |
-| GET | `/api/{domain}/hits` | `JuicyHandler` | Returns `{ hits[] }` |
+| DELETE | `/api/delete/{domain}` | `deleteTargetHandler` | Deletes DB file + all data |
+| GET | `/api/{domain}/hosts` | `Host_Handler` | Returns `{ stats, hosts[] }` |
+| GET | `/api/{domain}/hits` | `Juicy_Handler` | Returns `{ hits[] }` |
+| POST | `/api/{domain}/ai/domains` | `AiDomain_Handler` | Runs Haiku triage on all hosts, batched 50 at a time |
 
 ### Host-level
 | Method | Route | Handler | Notes |
 |--------|-------|---------|-------|
-| PATCH | `/api/{domain}/host/{hostURL}/triage` | `TriageHandler` | Body: `{ domain, status }` — updates triage_status |
-| PATCH | `/api/{domain}/host/{hostURL}/notes` | `NotesHandler` | Body: `{ domain, notes }` — updates notes |
-
-### Stubbed (commented out, not yet implemented)
-| Method | Route | Notes |
-|--------|-------|-------|
-| POST | `/api/{domain}/host/{hostURL}/screenshot` | Frontend calls this; handler doesn't exist yet |
-| POST | `/api/{domain}/host/{hostURL}/portscan` | Frontend calls this; handler doesn't exist yet |
-| DELETE | `/api/delete/{domain}` | Frontend delete button calls this; handler doesn't exist yet |
+| PATCH | `/api/{domain}/host/{hostURL}/triage` | `Triage_Handler` | Body: `{ domain, status }` |
+| PATCH | `/api/{domain}/host/{hostURL}/notes` | `Notes_Handler` | Body: `{ domain, notes }` |
+| POST | `/api/{domain}/host/{hostURL}/screenshot` | `ScreenShot_Handler` | Starts gowitness job, returns `{ token }` |
+| GET | `/api/{domain}/host/{hostURL}/screenshot/status` | `ScreenShotStatus_Handler` | Poll with `?token=<uuid>` → pending/done/failed |
+| GET | `/api/{domain}/host/{hostURL}/screenshot` | `ScreenShotServe_Handler` | Serves cached screenshot image |
 
 ### Static file serving
-- `/css/*`, `/js/*` — served from `static/` via `http.FileServer` middleware wrapper (runs before Chi routing)
-- `*.png`, `*.jpg`, `*.jpeg`, `*.gif`, `*.webp`, `/images/*` — also served via FileServer (added for screenshot display)
-- `/index.html` → `static/index.html`
-- `/*` (catch-all) → `static/target.html`
+- `/dist/*` — Vite-built React app from `static/dist/`
+- `/images/*` — screenshots from `static/images/`
+- `/*` (catch-all) → `static/dist/index.html` (React SPA)
 
 ---
 
-## Frontend features (implemented)
+## Frontend features
 
-### target.html
-- Table of targets (not cards) — domain, total hosts, 200 OK, 403, 5xx loaded async per-target from `/api/{domain}/hosts`
+### TargetsPage (`/`)
+- Table of targets — domain, total hosts, 200 OK, 403, 5xx loaded async per-target
 - Active target highlighted with accent left-border + "active" badge
-- Filter input, target count, summary bar (totals across all targets)
+- Filter input, target count, summary bar across all targets
 - "+ New Target" modal → `POST /api/targets/new`
-- Delete button per row → `DELETE /api/delete/{domain}` (frontend wired, backend stub missing)
-- Clicking row or Select → sets `localStorage.recon_target`, redirects to `/index.html`
+- Delete button per row → `DELETE /api/delete/{domain}`
+- Click row → sets `localStorage.recon_target`, navigates to `/dashboard`
 
-### index.html tabs
-- **Host Enumeration** — sortable table, grouped by hostname with expand/collapse child rows, triage tags on rows, column toggles (IPs/CNAME/Content-Type), Import button
-- **Juicy Hits** — path hits table grouped by domain, severity badges
-- **JS Analysis** — JS endpoint/secret analysis table (expand per domain)
-- **Overview** — collapsible sidebar (300px, ◀/▶ toggle) with host list + filter; main panel shows screenshot, port scan, host info grid, path hits, triage buttons, notes
+### DashboardPage (`/dashboard`)
+- Tab switcher: Host Enumeration, Juicy Hits, JS Analysis, Overview
+- Fetches hosts + hits on mount, passes down to tabs
+- Tab counts shown in header (total hosts, hits count)
+- "← domain" link back to targets
 
-### Detail panel (side panel on hosts tab)
-- Opens on row click, shows all host fields
-- Triage buttons (none/to-test/dead-end/tested) → `PATCH /api/{domain}/host/{hostURL}/triage`
-- Notes textarea + Save → `PATCH /api/{domain}/host/{hostURL}/notes`
-- "Overview ↗" button jumps to Overview tab and selects host
+### Host Enumeration tab
+- Virtualised list (TanStack React Virtual) for performance
+- Hosts grouped by hostname — expand/collapse child rows (alt ports)
+- Filter by URL, title, server
+- Sort by any column
+- Column visibility toggles: IPs, CNAME, Content-Type
+- Triage tags shown inline on collapsed rows (hidden when expanded to prevent overlap)
+- **Hide/unhide rows** — hover a row to reveal a `hide` button; hides the entire hostname group. Hidden state persisted to `localStorage` as `recon_hidden_<domain>`. Toolbar shows "○ N hidden" button to reveal hidden rows as dimmed entries with `unhide` button.
+- Import button → `POST /api/import/{domain}`
+- Click row → opens HostPanel side panel
+- "Overview ↗" from panel → switches to Overview tab with host selected
 
-### Overview tab actions
-- **Take Screenshot** button → `POST /api/{domain}/host/{hostURL}/screenshot` (backend stub missing)
-- **Scan Ports** button → `POST /api/{domain}/host/{hostURL}/portscan` (backend stub missing)
-- Screenshot auto-loads on host select via `GET /api/{domain}/host/{hostURL}/screenshot`
+### Juicy Hits tab
+- Table: severity badge (high/medium/low, colour-coded red/orange/yellow), status code (colour-coded), size, URL (clickable, opens in new tab)
+- Filter by URL, severity, status code
+- Sort by severity toggle (asc/desc)
+- Hit counts in header: high / medium / low / total
+- Empty state messages
+
+### JS Analysis tab
+- Stub — not yet implemented
+
+### Overview tab
+- Collapsible sidebar (300px) — host list with filter, click to select
+- Screenshot viewer — auto-loads existing screenshot on host select
+- "Take Screenshot" button → `POST /api/.../screenshot`, polls status every 1.5s, displays on done
+- Scan Ports button — stubbed
+- Host info grid: URL, status, title, server, tech, ports, IPs, CNAME, content-type
+- Related path hits for selected host
+- Triage buttons + notes textarea with Save
+
+### HostPanel (side panel)
+- Opens on hosts table row click (ESC to close)
+- All host fields in structured layout
+- Triage buttons with live PATCH update
+- Notes textarea + Save
+- "Overview ↗" link
 
 ---
 
@@ -102,26 +145,27 @@ Go-powered recon dashboard in server2/. Replaces old Python server/ (ignore serv
 CREATE TABLE domains (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   domain_name    TEXT UNIQUE,
-  status         TEXT,
+  status_code    TEXT,
+  open_ports     TEXT,  -- comma-separated: "80, 443"
   title          TEXT,
+  tech_stack     TEXT,  -- comma-separated
+  content_type   TEXT,
   server         TEXT,
-  tech           TEXT,  -- comma-separated
-  ports          TEXT,  -- JSON: [{port, service}]
   ips            TEXT,  -- comma-separated
   cname          TEXT,  -- comma-separated
-  ctype          TEXT,
-  triage_status  TEXT DEFAULT 'none',
+  badges         TEXT,  -- comma-separated: "interesting,api"
+  triage_status  TEXT DEFAULT '',
   notes          TEXT DEFAULT '',
-  badges         TEXT   -- JSON array
+  tier_tag       TEXT DEFAULT '',  -- tier1, tier2, tier3 (set by AI)
+  tier_reason    TEXT DEFAULT ''   -- short reason from AI (≤5 words)
 );
 
-CREATE TABLE path_hits (
-  id       INTEGER PRIMARY KEY AUTOINCREMENT,
-  domain   TEXT,
-  url      TEXT,
-  status   INTEGER,
-  size     INTEGER,
-  severity TEXT
+CREATE TABLE juicy_hits (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  url          TEXT UNIQUE,
+  status_code  TEXT,
+  size         TEXT,
+  severity     TEXT  -- high, medium, low
 );
 ```
 
@@ -132,44 +176,44 @@ CREATE TABLE path_hits (
 - IP field in httpx JSON is `"a"` (DNS A record) → `HttpxEntry.IPs []string \`json:"a"\``
 - ON CONFLICT upsert on `domain_name` preserves `triage_status`/`notes` on re-import
 - Severity: 2xx→high, 5xx→medium, else→low
-- Badges: "interesting" (login/admin/dashboard etc), "api" (api/swagger/openapi/graphql)
+- Badges: "interesting" (login/admin/dashboard/portal/jenkins/kibana etc), "api" (api/swagger/openapi/graphql)
 - `hostURL` Chi URL params must be `url.QueryUnescape`d — stored decoded in DB
 
 ## Color theme
 - Steel blue accent: `--accent: #4d9fff`, `--accent-dim: #0a1a30`
-- Orange backup available: `server2/backups/orange_dashboard.css` + `orange_target.html`
-- Follows Uncodixify spec (skills/Deign.md): no uppercase label overload, no transform animations, shadow max 8px, opacity transitions only
+- Status colours: green (2xx), orange (3xx), red (403/4xx/5xx)
+- Orange backup available in `server2/backups/` — not in use
+- Follows Uncodixify spec: no uppercase label overload, no transform animations, shadow max 8px, opacity transitions only
 
 ---
 
-## TODO next
+## TODO
 
-1. **Screenshot route** — 🔧 in progress
-   - `internal/tools/screenshot.go` — job map (`map[string]JobResult`), `sync.RWMutex`, `GetJob()`, `SetJob()`; `Screenshot(domain, uuid)` sets pending, runs gowitness, sets done/failed
-   - `ScreenShot_Handler` in `routes.go` — generates uuid token, calls `go tools.Screenshot(hostURL, id)`, needs to return token to client
-   - **Next:** `Screenshot()` needs to save to `temp/<domain>/`, grab file, rename to `images/<domain>_ss.jpeg`; wire up `SetJob` done/failed based on `exec` result
-   - **Next:** implement `GET /api/{domain}/host/{hostURL}/screenshot/status` — calls `GetJob(token)`: pending → return waiting, failed → return failed + delete job, done → return success + path
-   - **Next:** implement `GET /api/{domain}/host/{hostURL}/screenshot` to serve the saved image file
-   - **Next:** remove hardcoded `/test-screenshot.png` from `overview.js`
+1. **AI domain triage — finish wiring** — backend calls Haiku and gets JSON back, next steps:
+   - Add `tier_tag` and `tier_reason` columns to `domains` table via `migrateDB` version bump
+   - Unmarshal Haiku JSON response into `TierResult` structs (strip markdown fences first)
+   - `UPDATE domains SET tier_tag=$1, tier_reason=$2 WHERE domain_name=$3` for each result
+   - Add `tier_tag`/`tier_reason` to `HostResponse` and return from `ReadHosts`
+   - Frontend: add tier1/tier2/tier3 options to the tag filter dropdown in HostsTab
+   - Frontend: show tier badge on host rows alongside existing triage/badge tags
+   - Frontend: "AI Triage" button in toolbar → `POST /api/{domain}/ai/domains`
 
-   **Flow:**
-   ```
-   POST /screenshot → handler makes token → go Screenshot(domain, token)
-   Screenshot() → SetJob(pending) → runs gowitness → SetJob(done|failed)
-   GET  /screenshot/status → GetJob(token) → pending|failed(+delete)|done
-   ```
+2. **Finish port scanning** — implement `POST /api/{domain}/host/{hostURL}/portscan`
+   - Fire-and-forget pattern matching screenshot system: POST returns token immediately, poll GET for status + results
+   - Run `nmap` or `masscan` against resolved IPs
+   - Store results in DB, display in Overview tab (wire up "Scan Ports" button)
 
-2. **Port scan route** — implement `POST /api/{domain}/host/{hostURL}/portscan`
-   - Fire-and-forget pattern: POST starts scan (returns immediately), poll `GET /api/{domain}/host/{hostURL}/portscan` for status + results
-   - Run `nmap` or `masscan` against resolved IPs for the host
-   - Store results in DB (see TODO #3 for schema)
+3. **Finish JS secrets/routes tab** — replace stub in DashboardPage
+   - Parse JS files found during httpx scan
+   - Surface endpoints, secrets, API keys
+   - Table per domain: JS file URL, finding type, value, severity
 
-3. **DB schema refactor** — remove comma-separated columns, add junction tables
-   - `ips` table: `(id, domain_id, ip TEXT)`
-   - `cnames` table: `(id, domain_id, cname TEXT)`
-   - `tech` table: `(id, domain_id, tech TEXT)`
-   - `open_ports` table: `(id, ip TEXT, port INT, service TEXT)` — keyed by IP not domain, since IPs can be shared across domains
-   - `ReadHosts` does Go-side join to assemble `Host` struct (avoids complex SQL joins)
-   - Migration: write `migrateDB` version bump to create new tables, backfill from existing comma-separated data
+4. **DB schema refactor** — remove comma-separated columns, add junction tables
+   - `ips`, `cnames`, `tech`, `open_ports` tables keyed by domain_id
+   - `ReadHosts` does Go-side join to assemble `Host` struct
+   - Migration via `migrateDB` version bump + backfill from comma-separated data
 
-4. ~~**Delete target route**~~ — ✅ done (`deleteTargetHandler` + `database.DeleteData()`)
+5. ~~**Screenshot route**~~ — ✅ done (async job system, gowitness, polling, serve image)
+6. ~~**Delete target route**~~ — ✅ done (`deleteTargetHandler` + `database.DeleteData()`)
+7. ~~**Juicy Hits tab**~~ — ✅ done (React migration complete)
+8. ~~**AI route + Haiku integration**~~ — ✅ done (endpoint live, batching works, JSON response printing correctly)

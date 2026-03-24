@@ -9,6 +9,8 @@ interface Props {
   hosts: Host[]
   hits: Hit[]
   initialHostId?: number | null
+  onTriageChange: (id: number, status: string) => void
+  onNotesChange: (id: number, notes: string) => void
 }
 
 type SsPhase = 'idle' | 'polling' | 'done' | 'failed'
@@ -85,7 +87,7 @@ function useScreenshot(domain: string, hostURL: string) {
 
 // ── Host detail panel ──────────────────────────────────────────────────────
 
-function HostDetail({ domain, host, hits }: { domain: string; host: Host; hits: Hit[] }) {
+function HostDetail({ domain, host, hits, onTriageChange, onNotesChange }: { domain: string; host: Host; hits: Hit[]; onTriageChange: (id: number, status: string) => void; onNotesChange: (id: number, notes: string) => void }) {
   const [triage, setTriage] = useState(host.triage_status || 'none')
   const [notes, setNotes] = useState(host.notes || '')
   const [notesToast, setNotesToast] = useState<string | null>(null)
@@ -108,6 +110,7 @@ function HostDetail({ domain, host, hits }: { domain: string; host: Host; hits: 
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ domain, status }),
     })
+    onTriageChange(host.id, status)
   }
 
   async function saveNotes() {
@@ -119,6 +122,7 @@ function HostDetail({ domain, host, hits }: { domain: string; host: Host; hits: 
     const data = await r.json()
     setNotesToast(data.status === 'Note added!' ? 'Saved' : 'Failed')
     setTimeout(() => setNotesToast(null), 2000)
+    if (data.status === 'Note added!') onNotesChange(host.id, notes)
   }
 
   function infoCell(label: string, value: React.ReactNode, mono = false, full = false) {
@@ -296,7 +300,7 @@ function HostDetail({ domain, host, hits }: { domain: string; host: Host; hits: 
 
 // ── Overview tab ───────────────────────────────────────────────────────────
 
-export default function OverviewTab({ domain, hosts, hits, initialHostId }: Props) {
+export default function OverviewTab({ domain, hosts, hits, initialHostId, onTriageChange, onNotesChange }: Props) {
   const [activeId, setActiveId] = useState<number | null>(initialHostId ?? null)
 
   useEffect(() => {
@@ -385,7 +389,7 @@ export default function OverviewTab({ domain, hosts, hits, initialHostId }: Prop
       {/* Main content */}
       <div className="overview-main">
         {activeHost ? (
-          <HostDetail key={activeHost.id} domain={domain} host={activeHost} hits={hits} />
+          <HostDetail key={activeHost.id} domain={domain} host={activeHost} hits={hits} onTriageChange={onTriageChange} onNotesChange={onNotesChange} />
         ) : (
           <div className="overview-empty-msg">← Select a host from the sidebar</div>
         )}

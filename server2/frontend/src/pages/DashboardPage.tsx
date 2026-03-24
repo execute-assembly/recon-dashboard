@@ -35,6 +35,14 @@ export default function DashboardPage() {
 
   function reload() { fetchHosts(); fetchHits() }
 
+  function updateHostTriage(id: number, status: string) {
+    setHosts(prev => prev.map(h => h.id === id ? { ...h, triage_status: status } : h))
+  }
+
+  function updateHostNotes(id: number, notes: string) {
+    setHosts(prev => prev.map(h => h.id === id ? { ...h, notes } : h))
+  }
+
   function openInOverview(id: number) {
     setOverviewHostId(id)
     setTab('overview')
@@ -93,6 +101,8 @@ export default function DashboardPage() {
           stats={stats}
           onImport={reload}
           onOpenInOverview={openInOverview}
+          onTriageChange={updateHostTriage}
+          onNotesChange={updateHostNotes}
         />
       </div>
 
@@ -102,6 +112,8 @@ export default function DashboardPage() {
           hosts={hosts}
           hits={hits}
           initialHostId={overviewHostId}
+          onTriageChange={updateHostTriage}
+          onNotesChange={updateHostNotes}
         />
       )}
 

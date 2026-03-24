@@ -17,11 +17,16 @@ func splitTrim(s string) []string {
 
 func statusClass(code string) string {
 	switch {
-	case strings.HasPrefix(code, "2"): return "s" + code
-	case strings.HasPrefix(code, "3"): return "s" + code
-	case code == "403":                return "s403"
-	case strings.HasPrefix(code, "4"): return "s400"
-	default:                           return ""
+	case strings.HasPrefix(code, "2"):
+		return "s" + code
+	case strings.HasPrefix(code, "3"):
+		return "s" + code
+	case code == "403":
+		return "s403"
+	case strings.HasPrefix(code, "4"):
+		return "s400"
+	default:
+		return ""
 	}
 }
 
@@ -36,15 +41,25 @@ func transformHost(h Host) HostResponse {
 		ports = append(ports, Port{Port: p, Service: service})
 	}
 
-	if ports == nil    { ports    = []Port{}   }
-	tech  := splitTrim(h.TechStack)
-	ips   := splitTrim(h.IPs)
+	if ports == nil {
+		ports = []Port{}
+	}
+	tech := splitTrim(h.TechStack)
+	ips := splitTrim(h.IPs)
 	cname := splitTrim(h.CNAME)
 	badges := splitTrim(h.Badges)
-	if tech   == nil { tech   = []string{} }
-	if ips    == nil { ips    = []string{} }
-	if cname  == nil { cname  = []string{} }
-	if badges == nil { badges = []string{} }
+	if tech == nil {
+		tech = []string{}
+	}
+	if ips == nil {
+		ips = []string{}
+	}
+	if cname == nil {
+		cname = []string{}
+	}
+	if badges == nil {
+		badges = []string{}
+	}
 
 	return HostResponse{
 		ID:           h.ID,
@@ -125,9 +140,12 @@ func ReadHosts(domain string) (HostsResult, error) {
 		}
 
 		switch {
-		case strings.HasPrefix(h.StatusCode, "2"): stats.S200++
-		case h.StatusCode == "403":                stats.S403++
-		case strings.HasPrefix(h.StatusCode, "5"): stats.S500++
+		case strings.HasPrefix(h.StatusCode, "2"):
+			stats.S200++
+		case h.StatusCode == "403":
+			stats.S403++
+		case strings.HasPrefix(h.StatusCode, "5"):
+			stats.S500++
 		}
 
 		hosts = append(hosts, transformHost(h))
@@ -143,4 +161,39 @@ func ReadHosts(domain string) (HostsResult, error) {
 	stats.Total = len(hosts)
 
 	return HostsResult{Stats: stats, Hosts: hosts}, nil
+}
+
+type DomainForAI struct {
+	URL    string
+	Status string
+	Title  string
+	Tech   string
+}
+
+func ReadHostsForAI(domain string) ([]DomainForAI, error) {
+	db, err := getDB(domain)
+
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := db.Query(`
+		SELECT domain_name, status_code, title, tech_stack FROM domains
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var domains []DomainForAI
+	for rows.Next() {
+		var d DomainForAI
+		err := rows.Scan(&d.URL, &d.Status, &d.Title, &d.Tech)
+		if err != nil {
+			return nil, err
+		}
+		domains = append(domains, d)
+	}
+
+	return domains, nil
 }

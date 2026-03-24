@@ -91,6 +91,8 @@ func CreateNewTarget(name string) error {
         ips          TEXT,
         cname        TEXT,
         badges        TEXT,
+        tier_tag     TEXT NOT NULL DEFAULT '',
+        tier_reason  TEXT NOT NULL DEFAULT '',
         triage_status TEXT NOT NULL DEFAULT '',
         notes         TEXT NOT NULL DEFAULT ''
     );`)

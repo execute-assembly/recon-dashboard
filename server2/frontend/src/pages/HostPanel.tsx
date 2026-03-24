@@ -6,9 +6,11 @@ interface Props {
   domain: string
   onClose: () => void
   onOpenInOverview: (id: number) => void
+  onTriageChange: (id: number, status: string) => void
+  onNotesChange: (id: number, notes: string) => void
 }
 
-export default function HostPanel({ host, domain, onClose, onOpenInOverview }: Props) {
+export default function HostPanel({ host, domain, onClose, onOpenInOverview, onTriageChange, onNotesChange }: Props) {
   const [triage, setTriage] = useState(host.triage_status || 'none')
   const [notes, setNotes]   = useState(host.notes || '')
   const [saved, setSaved]   = useState<'ok' | 'err' | null>(null)
@@ -29,6 +31,7 @@ export default function HostPanel({ host, domain, onClose, onOpenInOverview }: P
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ domain, status }),
     })
+    onTriageChange(host.id, status)
   }
 
   async function saveNotes() {
@@ -40,6 +43,7 @@ export default function HostPanel({ host, domain, onClose, onOpenInOverview }: P
     const d = await r.json()
     setSaved(d.status === 'Note added!' ? 'ok' : 'err')
     setTimeout(() => setSaved(null), 2000)
+    if (d.status === 'Note added!') onNotesChange(host.id, notes)
   }
 
   const val = (v: string | string[] | undefined) => {

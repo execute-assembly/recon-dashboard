@@ -25,6 +25,8 @@ func Run() {
 	r.Get("/api/{domain}/host/{hostURL}/screenshot/status", ScreenShotStatus_Handler)
 	r.Get("/api/{domain}/host/{hostURL}/screenshot", ScreenShotServe_Handler)
 	// r.Post("/api/{domain}/host/{hostURL}/portscan", PortScan_Handler)
+	//
+	r.Post("/api/{domain}/ai/domains", AiDomain_Handler)
 
 	r.Post("/api/import/{domain}", ImportHandler)
 	r.Delete("/api/delete/{domain}", deleteTargetHandler)
@@ -34,9 +36,15 @@ func Run() {
 
 	r.Get("/dashboard", serveHTML("static/dist/index.html"))
 
-	// React SPA — targets page (serves dist/index.html for / and any unknown routes)
+	// React SPA — targets page (serves dist/index.html for / and any non-API routes)
 	r.Get("/", serveHTML("static/dist/index.html"))
-	r.Get("/*", serveHTML("static/dist/index.html"))
+	r.Get("/*", func(w http.ResponseWriter, req *http.Request) {
+		if strings.HasPrefix(req.URL.Path, "/api/") {
+			http.NotFound(w, req)
+			return
+		}
+		serveHTML("static/dist/index.html")(w, req)
+	})
 
 	// Middleware wrapper: static assets served before Chi routing.
 	staticFS := http.FileServer(http.Dir("static"))

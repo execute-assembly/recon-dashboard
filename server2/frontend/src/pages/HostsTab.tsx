@@ -11,6 +11,8 @@ interface Props {
   stats: HostStats | null
   onImport: () => void
   onOpenInOverview: (id: number) => void
+  onTriageChange: (id: number, status: string) => void
+  onNotesChange: (id: number, notes: string) => void
 }
 
 interface HostGroup {
@@ -93,24 +95,49 @@ const BADGE_CLASS: Record<string, string> = { interesting: 'badge-orange', api: 
 
 // ── Main component ──────────────────────────────────────────────────────────
 
-export default function HostsTab({ domain, hosts, stats, onImport, onOpenInOverview }: Props) {
-  const [expanded,   setExpanded]   = useState<Set<string>>(new Set())
-  const [filter,     setFilter]     = useState('')
-  const [sortCol,    setSortCol]    = useState<number | null>(null)
-  const [sortDir,    setSortDir]    = useState<SortDir>('asc')
-  const [colVis,     setColVis]     = useState<ColVis>({ ips: true, cname: true, ctype: true })
-  const [panelHost,  setPanelHost]  = useState<Host | null>(null)
-  const [importing,  setImporting]  = useState(false)
-  const [toast,      setToast]      = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+export default function HostsTab({ domain, hosts, stats, onImport, onOpenInOverview, onTriageChange, onNotesChange }: Props) {
+  const [expanded,    setExpanded]    = useState<Set<string>>(new Set())
+  const [filter,      setFilter]      = useState('')
+  const [sortCol,     setSortCol]     = useState<number | null>(null)
+  const [sortDir,     setSortDir]     = useState<SortDir>('asc')
+  const [colVis,      setColVis]      = useState<ColVis>({ ips: true, cname: true, ctype: true })
+  const [panelHost,   setPanelHost]   = useState<Host | null>(null)
+  const [importing,   setImporting]   = useState(false)
+  const [toast,       setToast]       = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+  const [hidden,      setHidden]      = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem(`recon_hidden_${domain}`)
+      return raw ? new Set<string>(JSON.parse(raw)) : new Set<string>()
+    } catch { return new Set<string>() }
+  })
+  const [showHidden,      setShowHidden]      = useState(false)
+  const [tagFilter,       setTagFilter]       = useState<Set<string>>(new Set())
+  const [tagDropdownOpen, setTagDropdownOpen] = useState(false)
 
-  const scrollRef   = useRef<HTMLDivElement>(null)
-  const toastTimer  = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const scrollRef      = useRef<HTMLDivElement>(null)
+  const toastTimer     = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const tagDropdownRef = useRef<HTMLDivElement>(null)
+
+  // Persist hidden list to localStorage
+  useEffect(() => {
+    localStorage.setItem(`recon_hidden_${domain}`, JSON.stringify([...hidden]))
+  }, [hidden, domain])
 
   // Close panel on ESC
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setPanelHost(null) }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
+  }, [])
+
+  // Close tag dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (tagDropdownRef.current && !tagDropdownRef.current.contains(e.target as Node))
+        setTagDropdownOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
   }, [])
 
   function showToast(type: 'success' | 'error', msg: string) {
@@ -121,15 +148,32 @@ export default function HostsTab({ domain, hosts, stats, onImport, onOpenInOverv
 
   // ── Derived data ───────────────────────────────────────────────────────
 
+  const TRIAGE_TAGS = new Set(['to-test', 'dead-end', 'tested', 'none'])
+
   const filteredHosts = useMemo(() => {
-    if (!filter.trim()) return hosts
-    const q = filter.toLowerCase()
-    return hosts.filter(h =>
-      h.url.toLowerCase().includes(q) ||
-      (h.title ?? '').toLowerCase().includes(q) ||
-      (h.server ?? '').toLowerCase().includes(q)
-    )
-  }, [hosts, filter])
+    let result = hosts
+
+    if (filter.trim()) {
+      const q = filter.toLowerCase()
+      result = result.filter(h =>
+        h.url.toLowerCase().includes(q) ||
+        (h.title ?? '').toLowerCase().includes(q) ||
+        (h.server ?? '').toLowerCase().includes(q)
+      )
+    }
+
+    if (tagFilter.size > 0) {
+      result = result.filter(h => {
+        for (const tag of tagFilter) {
+          if (TRIAGE_TAGS.has(tag)) { if (h.triage_status === tag) return true }
+          else                      { if (h.badges?.includes(tag))  return true }
+        }
+        return false
+      })
+    }
+
+    return result
+  }, [hosts, filter, tagFilter])
 
   const groups = useMemo(() => {
     const gs = groupByHostname(filteredHosts)
@@ -144,7 +188,8 @@ export default function HostsTab({ domain, hosts, stats, onImport, onOpenInOverv
 
   const flatItems = useMemo<FlatItem[]>(() => {
     const items: FlatItem[] = []
-    for (const g of groups) {
+    const source = showHidden ? groups : groups.filter(g => !hidden.has(g.key))
+    for (const g of source) {
       items.push({ kind: 'primary', host: g.primary, groupKey: g.key, childCount: g.children.length })
       if (expanded.has(g.key)) {
         for (const c of g.children) {
@@ -153,7 +198,7 @@ export default function HostsTab({ domain, hosts, stats, onImport, onOpenInOverv
       }
     }
     return items
-  }, [groups, expanded])
+  }, [groups, expanded, hidden, showHidden])
 
   // ── Virtualizer ────────────────────────────────────────────────────────
 
@@ -176,6 +221,15 @@ export default function HostsTab({ domain, hosts, stats, onImport, onOpenInOverv
     })
   }
 
+  function toggleHide(e: React.MouseEvent, key: string) {
+    e.stopPropagation()
+    setHidden(prev => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
+      return next
+    })
+  }
+
   function collapseAll() {
     setExpanded(new Set())
   }
@@ -191,6 +245,14 @@ export default function HostsTab({ domain, hosts, stats, onImport, onOpenInOverv
 
   function toggleCol(key: keyof ColVis) {
     setColVis(v => ({ ...v, [key]: !v[key] }))
+  }
+
+  function toggleTag(tag: string) {
+    setTagFilter(prev => {
+      const next = new Set(prev)
+      next.has(tag) ? next.delete(tag) : next.add(tag)
+      return next
+    })
   }
 
   const doImport = useCallback(async () => {
@@ -265,6 +327,39 @@ export default function HostsTab({ domain, hosts, stats, onImport, onOpenInOverv
           />
         </div>
 
+        {/* Tag filter dropdown */}
+        <div ref={tagDropdownRef} style={{ position: 'relative' }}>
+          <button
+            className={`expand-btn${tagFilter.size > 0 ? ' open' : ''}`}
+            onClick={() => setTagDropdownOpen(v => !v)}
+          >
+            Tags{tagFilter.size > 0 ? ` (${tagFilter.size})` : ''}
+          </button>
+          {tagDropdownOpen && (
+            <div className="tag-filter-dropdown">
+              <div className="tag-filter-group-label">Triage</div>
+              {(['to-test', 'dead-end', 'tested', 'none'] as const).map(t => (
+                <label key={t} className="tag-filter-item">
+                  <input type="checkbox" checked={tagFilter.has(t)} onChange={() => toggleTag(t)} />
+                  {t}
+                </label>
+              ))}
+              <div className="tag-filter-group-label" style={{ marginTop: 8 }}>Badges</div>
+              {(['api', 'interesting'] as const).map(t => (
+                <label key={t} className="tag-filter-item">
+                  <input type="checkbox" checked={tagFilter.has(t)} onChange={() => toggleTag(t)} />
+                  {t}
+                </label>
+              ))}
+              {tagFilter.size > 0 && (
+                <button className="tag-filter-clear" onClick={() => setTagFilter(new Set())}>
+                  clear all
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
         <div className="col-toggle">
           <span>Columns</span>
           {(['ips', 'cname', 'ctype'] as const).map(k => (
@@ -279,6 +374,15 @@ export default function HostsTab({ domain, hosts, stats, onImport, onOpenInOverv
         </div>
 
         <button className="expand-btn" onClick={collapseAll}>▲ Collapse All</button>
+
+        {hidden.size > 0 && (
+          <button
+            className={`expand-btn${showHidden ? ' open' : ''}`}
+            onClick={() => setShowHidden(v => !v)}
+          >
+            {showHidden ? '● ' : '○ '}{hidden.size} hidden
+          </button>
+        )}
 
         <button
           className={`btn-import${importing ? ' loading' : ''}`}
@@ -334,15 +438,16 @@ export default function HostsTab({ domain, hosts, stats, onImport, onOpenInOverv
                 const item = flatItems[vr.index]
                 const h    = item.host
                 const cols = visibleCols(h)
-                const isChild   = item.kind === 'child'
+                const isChild    = item.kind === 'child'
                 const isExpanded = item.kind === 'primary' && expanded.has(item.groupKey)
+                const isHidden   = hidden.has(item.groupKey)
 
                 return (
                   <div
                     key={`${item.groupKey}-${h.id}`}
                     data-index={vr.index}
                     ref={rowVirtualizer.measureElement}
-                    className={`hosts-row${isChild ? ' hosts-row-child' : ''}`}
+                    className={`hosts-row${isChild ? ' hosts-row-child' : ''}${isHidden ? ' hosts-row-hidden' : ''}`}
                     style={{ position: 'absolute', top: vr.start, left: 0, width: '100%', gridTemplateColumns: template }}
                     onClick={() => setPanelHost(h)}
                   >
@@ -360,8 +465,17 @@ export default function HostsTab({ domain, hosts, stats, onImport, onOpenInOverv
                             {isExpanded ? `▼ ${item.childCount + 1} hosts` : `▶ ${item.childCount + 1} hosts`}
                           </button>
                         )}
+                        {item.kind === 'primary' && (
+                          <button
+                            className="hide-host-btn"
+                            onClick={e => toggleHide(e, item.groupKey)}
+                            title={isHidden ? 'Unhide' : 'Hide'}
+                          >
+                            {isHidden ? 'unhide' : 'hide'}
+                          </button>
+                        )}
                       </div>
-                      {(h.badges?.length > 0 || (h.triage_status && h.triage_status !== 'none')) && (
+                      {!isExpanded && (h.badges?.length > 0 || (h.triage_status && h.triage_status !== 'none')) && (
                         <div className="url-meta">
                           {h.badges?.map(b => (
                             <span key={b} className={`badge ${BADGE_CLASS[b] ?? 'badge-yellow'}`}>{b}</span>
@@ -396,6 +510,8 @@ export default function HostsTab({ domain, hosts, stats, onImport, onOpenInOverv
           domain={domain}
           onClose={() => setPanelHost(null)}
           onOpenInOverview={onOpenInOverview}
+          onTriageChange={onTriageChange}
+          onNotesChange={onNotesChange}
         />
       )}
 
