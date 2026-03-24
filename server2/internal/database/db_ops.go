@@ -37,7 +37,7 @@ func getDB(domain string) (*sql.DB, error) {
 	if db, ok := connections[domain]; ok {
 		return db, nil
 	}
-dsa
+
 	Path := dbPath(domain)
 	db, err := sql.Open("sqlite3", Path)
 	if err != nil {

@@ -22,8 +22,9 @@ func Run() {
 	r.Patch("/api/{domain}/host/{hostURL}/notes", Notes_Handler)
 
 	r.Post("/api/{domain}/host/{hostURL}/screenshot", ScreenShot_Handler)
-	// r.Get("/api/{domain}/host/{hostURL}/screenshot/status, ScreenShotStatus_Handler)
-	// r.Post( "/api/{domain}/host/{hostURL}/portscan", PortScan_Handler)
+	r.Get("/api/{domain}/host/{hostURL}/screenshot/status", ScreenShotStatus_Handler)
+	r.Get("/api/{domain}/host/{hostURL}/screenshot", ScreenShotServe_Handler)
+	// r.Post("/api/{domain}/host/{hostURL}/portscan", PortScan_Handler)
 
 	r.Post("/api/import/{domain}", ImportHandler)
 	r.Delete("/api/delete/{domain}", deleteTargetHandler)
@@ -31,15 +32,25 @@ func Run() {
 	r.Post("/api/targets/new", NewTargetHandler)
 	r.Get("/api/targets", Targets_Handler)
 
-	r.Get("/index.html", serveHTML("static/index.html"))
-	r.Get("/*", serveHTML("static/target.html"))
+	r.Get("/dashboard", serveHTML("static/dist/index.html"))
 
-	// Middleware wrapper serves /css/* and /js/* before Chi route matching.
-	fs := http.FileServer(http.Dir("static"))
+	// React SPA — targets page (serves dist/index.html for / and any unknown routes)
+	r.Get("/", serveHTML("static/dist/index.html"))
+	r.Get("/*", serveHTML("static/dist/index.html"))
+
+	// Middleware wrapper: static assets served before Chi routing.
+	staticFS := http.FileServer(http.Dir("static"))
+	distFS := http.FileServer(http.Dir("static/dist"))
 	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		p := req.URL.Path
-		if strings.HasPrefix(p, "/css/") || strings.HasPrefix(p, "/js/") || strings.HasPrefix(p, "/images/") || strings.HasSuffix(p, ".png") || strings.HasSuffix(p, ".jpg") || strings.HasSuffix(p, ".jpeg") || strings.HasSuffix(p, ".gif") || strings.HasSuffix(p, ".webp") {
-			fs.ServeHTTP(w, req)
+		// Vite build output: JS/CSS chunks under /assets/
+		if strings.HasPrefix(p, "/assets/") {
+			distFS.ServeHTTP(w, req)
+			return
+		}
+		// Legacy static files and images
+		if strings.HasPrefix(p, "/css/") || strings.HasPrefix(p, "/js/") || strings.HasPrefix(p, "/images/") {
+			staticFS.ServeHTTP(w, req)
 			return
 		}
 		r.ServeHTTP(w, req)

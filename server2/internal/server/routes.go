@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -173,16 +174,47 @@ func deleteTargetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "Data Deleted Succesfully!"})
-
 	return
 }
 
 func ScreenShot_Handler(w http.ResponseWriter, r *http.Request) {
-	//domain := chi.URLParam(r, "domain")
 	hostURL, _ := url.QueryUnescape(chi.URLParam(r, "hostURL"))
-
 	id := uuid.NewString()
-
 	go tools.Screenshot(hostURL, id)
+	writeJSON(w, http.StatusOK, map[string]string{"token": id})
+}
 
+func ScreenShotStatus_Handler(w http.ResponseWriter, r *http.Request) {
+	hostURL, _ := url.QueryUnescape(chi.URLParam(r, "hostURL"))
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing token"})
+		return
+	}
+	result, ok := tools.CheckScreenshotStatus(token, hostURL)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"status": "not_found"})
+		return
+	}
+	switch result.Status {
+	case tools.JobPending:
+		writeJSON(w, http.StatusOK, map[string]string{"status": "pending"})
+	case tools.JobDone:
+		writeJSON(w, http.StatusOK, map[string]interface{}{"status": "done", "img_path": result.ImgPath})
+	case tools.JobFailed:
+		writeJSON(w, http.StatusOK, map[string]string{"status": "failed", "error": result.Error})
+	}
+}
+
+func ScreenShotServe_Handler(w http.ResponseWriter, r *http.Request) {
+	hostURL, _ := url.QueryUnescape(chi.URLParam(r, "hostURL"))
+	safe := tools.SanitizeForFilename(hostURL)
+	for _, ext := range []string{".png", ".jpg", ".jpeg"} {
+		path := fmt.Sprintf("./static/images/screenshots/%s%s", safe, ext)
+		if _, err := os.Stat(path); err == nil {
+			http.ServeFile(w, r, path)
+			return
+		}
+	}
+	http.NotFound(w, r)
 }
