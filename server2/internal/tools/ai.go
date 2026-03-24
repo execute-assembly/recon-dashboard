@@ -60,14 +60,13 @@ func AnlyiseBatch(batch []database.DomainForAI) error {
 	for _, d := range batch {
 		fmt.Fprintf(&sb, "%s | %s | %s | %s\n", d.URL, d.Status, d.Title, d.Tech)
 	}
-	fmt.Println("KEY:", os.Getenv("ANTHROPIC_API_KEY"))
 	client := anthropic.NewClient(
 		option.WithAPIKey(os.Getenv("ANTHROPIC_API_KEY")),
 	)
 
 	message, err := client.Messages.New(context.Background(),
 		anthropic.MessageNewParams{
-			Model:     anthropic.ModelClaudeSonnet4_5_20250929,
+			Model:     anthropic.ModelClaudeHaiku4_5_20251001,
 			MaxTokens: 2048,
 			System:    []anthropic.TextBlockParam{{Text: systemPrompt}},
 			Messages: []anthropic.MessageParam{

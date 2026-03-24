@@ -15,6 +15,7 @@
 
 # ── Claude ──
 .claude/
+.env
 
 # ── Misc ──
 server_desing.md
