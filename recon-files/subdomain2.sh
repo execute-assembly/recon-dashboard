@@ -39,7 +39,7 @@ echo -e "${BOLD}${RED}[!]${ENDCOLOR} crt.sh returned empty response, skipping...
 elif ! echo "$crt_response" | jq -e . > /dev/null 2>&1; then
 echo -e "${BOLD}${RED}[!]${ENDCOLOR} crt.sh response is not valid JSON, skipping..."
 else
-echo "$crt_response" | jq -r '.[].name_value' | sort -u > "$passive_dir/crt_subs.txt"
+echo "$crt_response" | jq -r '.[].name_value' | grep -E "(^|\.)${url//./\\.}$" | sort -u > "$passive_dir/crt_subs.txt"
 fi
 }
 
@@ -71,7 +71,7 @@ if [ "$count" -eq 0 ]; then
   break
 fi
 
-echo "$response" | jq -r '.[].dns_names[]' >> "$tmp_file"
+echo "$response" | jq -r '.[].dns_names[]' | grep -E "(^|\.)${url//./\\.}$" >> "$tmp_file"
 
 
 page=$(echo "$response" | jq -r '.[-1].id')
@@ -113,7 +113,7 @@ echo -e "${BOLD}${RED}[!]${ENDCOLOR} Too many files missing, skipping merge" >&2
 exit 1
 fi
 
-cat "${existing_files[@]}" | sort -u > "$subs_dir/all_subs.txt"
+cat "${existing_files[@]}" | sort -u | grep -E "(^|\.)${url//./\\.}$" > "$subs_dir/all_subs.txt"
 }
 
 

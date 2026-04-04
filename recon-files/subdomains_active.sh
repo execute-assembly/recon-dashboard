@@ -83,11 +83,20 @@ resolve_dns() {
 }
 
 
-# Step 2: subfinder second pass on alive subdomains
+# Step 2: subfinder second pass on alive subdomains (parallel)
 subfinder_pass2() {
-  echo -e "\n${BOLD}${BLUE}[+]${ENDCOLOR} Running subfinder second pass on alive subdomains..."
+  echo -e "\n${BOLD}${BLUE}[+]${ENDCOLOR} Running subfinder second pass on alive subdomains (parallel)..."
 
-  subfinder -dL "$active_dir/alive.txt" -silent -o "$active_dir/subfinder_pass2.txt" > /dev/null 2>&1 || true
+  local concurrency=10
+  local tmp_dir="$temp_dir/subfinder_pass2"
+  mkdir -p "$tmp_dir"
+
+  xargs -P "$concurrency" -I {} bash -c \
+    'subfinder -d "{}" -silent -o "'"$tmp_dir"'/{}.txt" > /dev/null 2>&1 || true' \
+    < "$active_dir/alive.txt"
+
+  cat "$tmp_dir"/*.txt 2>/dev/null | sort -u > "$active_dir/subfinder_pass2.txt" || true
+  rm -rf "$tmp_dir"
 
   if [[ -s "$active_dir/subfinder_pass2.txt" ]]; then
     echo -e "${BOLD}${GREEN}[+]${ENDCOLOR} Second pass found: ${BOLD}$(wc -l < "$active_dir/subfinder_pass2.txt")${ENDCOLOR} new subdomains"
