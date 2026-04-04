@@ -43,7 +43,7 @@ httpx_enrich() {
 
     echo -e "${BOLD}${BLUE}[+]${ENDCOLOR} Probing $(wc -l < "$subs_file") domains across common ports..."
 
-    httpx -silent -follow-redirects \
+    httpx -silent \
         -l "$subs_file" \
         -p "$PORTS" \
         -t 200 \
