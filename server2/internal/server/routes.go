@@ -1,6 +1,8 @@
 package server
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -8,11 +10,12 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
-	"github.com/z3vxo/recon-dashboard/internal/database"
-	"github.com/z3vxo/recon-dashboard/internal/tools"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/z3vxo/recon-dashboard/internal/database"
+	"github.com/z3vxo/recon-dashboard/internal/tools"
 )
 
 type TriageData struct {
@@ -225,4 +228,73 @@ func ScreenShotServe_Handler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	http.NotFound(w, r)
+}
+
+func authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cookie, err := r.Cookie("session")
+		if err != nil {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+			return
+		}
+		exp, ok := sessions[cookie.Value]
+		if !ok || time.Now().After(exp) {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+type LoginData struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+var sessions = map[string]time.Time{}
+
+func randString() (string, error) {
+	b := make([]byte, 32)
+	_, err := rand.Read(b)
+	if err != nil {
+		return "", err
+	}
+
+	return base64.URLEncoding.EncodeToString(b), nil
+}
+
+func Login_Handler(w http.ResponseWriter, r *http.Request) {
+
+	user := "zev"
+	pass := "Embassy55$"
+	var data LoginData
+
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+
+	if data.Username == user && data.Password == pass {
+		token, err := randString()
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Faile Creating cookie"})
+			return
+		}
+
+		sessions[token] = time.Now().Add(24 * time.Hour)
+
+		http.SetCookie(w, &http.Cookie{
+			Name:     "session",
+			Value:    token,
+			Path:     "/",
+			HttpOnly: true,
+			SameSite: http.SameSiteStrictMode,
+			MaxAge:   86400,
+		})
+
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		return
+
+	}
+
 }

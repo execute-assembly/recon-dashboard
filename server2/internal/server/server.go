@@ -15,25 +15,32 @@ import (
 func Run() {
 	r := chi.NewRouter()
 
-	r.Get("/api/{domain}/hosts", Host_Handler)
-	r.Get("/api/{domain}/hits", Juicy_Handler)
+	r.Post("/api/login", Login_Handler)
 
-	r.Patch("/api/{domain}/host/{hostURL}/triage", Triage_Handler)
-	r.Patch("/api/{domain}/host/{hostURL}/notes", Notes_Handler)
+	r.Group(func(r chi.Router) {
+		r.Use(authMiddleware)
 
-	r.Post("/api/{domain}/host/{hostURL}/screenshot", ScreenShot_Handler)
-	r.Get("/api/{domain}/host/{hostURL}/screenshot/status", ScreenShotStatus_Handler)
-	r.Get("/api/{domain}/host/{hostURL}/screenshot", ScreenShotServe_Handler)
-	// r.Post("/api/{domain}/host/{hostURL}/portscan", PortScan_Handler)
-	//
-	r.Post("/api/{domain}/ai/domains", AiDomain_Handler)
+		r.Get("/api/{domain}/hosts", Host_Handler)
+		r.Get("/api/{domain}/hits", Juicy_Handler)
 
-	r.Post("/api/import/{domain}", ImportHandler)
-	r.Delete("/api/delete/{domain}", deleteTargetHandler)
+		r.Patch("/api/{domain}/host/{hostURL}/triage", Triage_Handler)
+		r.Patch("/api/{domain}/host/{hostURL}/notes", Notes_Handler)
 
-	r.Post("/api/targets/new", NewTargetHandler)
-	r.Get("/api/targets", Targets_Handler)
+		r.Post("/api/{domain}/host/{hostURL}/screenshot", ScreenShot_Handler)
+		r.Get("/api/{domain}/host/{hostURL}/screenshot/status", ScreenShotStatus_Handler)
+		r.Get("/api/{domain}/host/{hostURL}/screenshot", ScreenShotServe_Handler)
+		// r.Post("/api/{domain}/host/{hostURL}/portscan", PortScan_Handler)
 
+		r.Post("/api/{domain}/ai/domains", AiDomain_Handler)
+
+		r.Post("/api/import/{domain}", ImportHandler)
+		r.Delete("/api/delete/{domain}", deleteTargetHandler)
+
+		r.Post("/api/targets/new", NewTargetHandler)
+		r.Get("/api/targets", Targets_Handler)
+	})
+
+	r.Get("/login", serveHTML("static/dist/index.html"))
 	r.Get("/dashboard", serveHTML("static/dist/index.html"))
 
 	// React SPA — targets page (serves dist/index.html for / and any non-API routes)
