@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Host } from '../lib/types'
+import { fetchApi } from '../lib/types'
 
 interface Props {
   host: Host
@@ -26,7 +27,7 @@ export default function HostPanel({ host, domain, onClose, onOpenInOverview, onT
 
   async function saveTriage(status: string) {
     setTriage(status)
-    await fetch(`/api/${enc(domain)}/host/${enc(host.url)}/triage`, {
+    await fetchApi(`/api/${enc(domain)}/host/${enc(host.url)}/triage`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ domain, status }),
@@ -35,7 +36,7 @@ export default function HostPanel({ host, domain, onClose, onOpenInOverview, onT
   }
 
   async function saveNotes() {
-    const r = await fetch(`/api/${enc(domain)}/host/${enc(host.url)}/notes`, {
+    const r = await fetchApi(`/api/${enc(domain)}/host/${enc(host.url)}/notes`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ domain, notes }),

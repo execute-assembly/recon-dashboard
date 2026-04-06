@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect, useMemo, useCallback } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import { fetchApi } from '../lib/types'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -79,7 +80,7 @@ export default function TargetsPage() {
   // ── Data loading ───────────────────────────────────────────────────────
 
   const loadStats = useCallback((domain: string) => {
-    fetch(`/api/${encodeURIComponent(domain)}/hosts`)
+    fetchApi(`/api/${encodeURIComponent(domain)}/hosts`)
       .then(r => r.json())
       .then(data => {
         const s = data.stats ?? {}
@@ -104,7 +105,7 @@ export default function TargetsPage() {
 
   const loadTargets = useCallback(() => {
     setLoading(true)
-    fetch('/api/targets')
+    fetchApi('/api/targets')
       .then(r => r.json())
       .then(data => {
         const list: string[] = data.targets ?? []
@@ -138,7 +139,7 @@ export default function TargetsPage() {
     e.stopPropagation()
     setDeleting(domain)
     try {
-      const r = await fetch(`/api/delete/${encodeURIComponent(domain)}`, { method: 'DELETE' })
+      const r = await fetchApi(`/api/delete/${encodeURIComponent(domain)}`, { method: 'DELETE' })
       const data = await r.json()
       if (!r.ok) {
         showToast('error', data.status ?? 'Delete failed')
@@ -184,7 +185,7 @@ export default function TargetsPage() {
     setModalError('')
     setModalSubmitting(true)
     try {
-      const r = await fetch('/api/targets/new', {
+      const r = await fetchApi('/api/targets/new', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ domain }),

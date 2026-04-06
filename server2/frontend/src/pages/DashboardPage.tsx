@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { Host, Hit, HostStats } from '../lib/types'
+import { fetchApi } from '../lib/types'
 import HostsTab from './HostsTab'
 import HitsTab from './HitsTab'
 import OverviewTab from './OverviewTab'
@@ -17,7 +18,7 @@ export default function DashboardPage() {
 
   const fetchHosts = useCallback(() => {
     if (!domain) return
-    fetch(`/api/${encodeURIComponent(domain)}/hosts`)
+    fetchApi(`/api/${encodeURIComponent(domain)}/hosts`)
       .then(r => r.json())
       .then(data => { setHosts(data.hosts ?? []); setStats(data.stats ?? null) })
       .catch(() => {})
@@ -25,7 +26,7 @@ export default function DashboardPage() {
 
   const fetchHits = useCallback(() => {
     if (!domain) return
-    fetch(`/api/${encodeURIComponent(domain)}/hits`)
+    fetchApi(`/api/${encodeURIComponent(domain)}/hits`)
       .then(r => r.json())
       .then(data => setHits(data.hits ?? []))
       .catch(() => {})

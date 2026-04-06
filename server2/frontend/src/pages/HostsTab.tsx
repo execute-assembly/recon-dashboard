@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, useMemo, useCallback } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { Host, HostStats } from '../lib/types'
+import { fetchApi } from '../lib/types'
 import HostPanel from './HostPanel'
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -258,7 +259,7 @@ export default function HostsTab({ domain, hosts, stats, onImport, onOpenInOverv
   const doImport = useCallback(async () => {
     setImporting(true)
     try {
-      const r = await fetch(`/api/import/${encodeURIComponent(domain)}`, { method: 'POST' })
+      const r = await fetchApi(`/api/import/${encodeURIComponent(domain)}`, { method: 'POST' })
       if (!r.ok) { const t = await r.text(); throw new Error(t) }
       showToast('success', 'Data imported successfully!')
       onImport()

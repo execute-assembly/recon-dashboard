@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, useMemo } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { Host, Hit } from '../lib/types'
+import { fetchApi } from '../lib/types'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -53,14 +54,14 @@ function useScreenshot(domain: string, hostURL: string) {
     if (pollRef.current) return
     setSs({ phase: 'polling' })
     try {
-      const r = await fetch(`/api/${enc(domain)}/host/${enc(hostURL)}/screenshot`, { method: 'POST' })
+      const r = await fetchApi(`/api/${enc(domain)}/host/${enc(hostURL)}/screenshot`, { method: 'POST' })
       if (!r.ok) { setSs({ phase: 'failed', error: 'Failed to start' }); return }
       const data = await r.json()
       tokenRef.current = data.token
 
       pollRef.current = setInterval(async () => {
         try {
-          const r2 = await fetch(
+          const r2 = await fetchApi(
             `/api/${enc(domain)}/host/${enc(hostURL)}/screenshot/status?token=${tokenRef.current}`
           )
           const d = await r2.json()
@@ -105,7 +106,7 @@ function HostDetail({ domain, host, hits, onTriageChange, onNotesChange }: { dom
 
   async function saveTriage(status: string) {
     setTriage(status)
-    await fetch(`/api/${enc(domain)}/host/${enc(host.url)}/triage`, {
+    await fetchApi(`/api/${enc(domain)}/host/${enc(host.url)}/triage`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ domain, status }),
@@ -114,7 +115,7 @@ function HostDetail({ domain, host, hits, onTriageChange, onNotesChange }: { dom
   }
 
   async function saveNotes() {
-    const r = await fetch(`/api/${enc(domain)}/host/${enc(host.url)}/notes`, {
+    const r = await fetchApi(`/api/${enc(domain)}/host/${enc(host.url)}/notes`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ domain, notes }),
