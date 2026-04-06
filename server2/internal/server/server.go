@@ -15,30 +15,28 @@ import (
 func Run() {
 	r := chi.NewRouter()
 
+	r.Use(authMiddleware)
+
 	r.Post("/api/login", Login_Handler)
 
-	r.Group(func(r chi.Router) {
-		r.Use(authMiddleware)
+	r.Get("/api/{domain}/hosts", Host_Handler)
+	r.Get("/api/{domain}/hits", Juicy_Handler)
 
-		r.Get("/api/{domain}/hosts", Host_Handler)
-		r.Get("/api/{domain}/hits", Juicy_Handler)
+	r.Patch("/api/{domain}/host/{hostURL}/triage", Triage_Handler)
+	r.Patch("/api/{domain}/host/{hostURL}/notes", Notes_Handler)
 
-		r.Patch("/api/{domain}/host/{hostURL}/triage", Triage_Handler)
-		r.Patch("/api/{domain}/host/{hostURL}/notes", Notes_Handler)
+	r.Post("/api/{domain}/host/{hostURL}/screenshot", ScreenShot_Handler)
+	r.Get("/api/{domain}/host/{hostURL}/screenshot/status", ScreenShotStatus_Handler)
+	r.Get("/api/{domain}/host/{hostURL}/screenshot", ScreenShotServe_Handler)
+	// r.Post("/api/{domain}/host/{hostURL}/portscan", PortScan_Handler)
 
-		r.Post("/api/{domain}/host/{hostURL}/screenshot", ScreenShot_Handler)
-		r.Get("/api/{domain}/host/{hostURL}/screenshot/status", ScreenShotStatus_Handler)
-		r.Get("/api/{domain}/host/{hostURL}/screenshot", ScreenShotServe_Handler)
-		// r.Post("/api/{domain}/host/{hostURL}/portscan", PortScan_Handler)
+	r.Post("/api/{domain}/ai/domains", AiDomain_Handler)
 
-		r.Post("/api/{domain}/ai/domains", AiDomain_Handler)
+	r.Post("/api/import/{domain}", ImportHandler)
+	r.Delete("/api/delete/{domain}", deleteTargetHandler)
 
-		r.Post("/api/import/{domain}", ImportHandler)
-		r.Delete("/api/delete/{domain}", deleteTargetHandler)
-
-		r.Post("/api/targets/new", NewTargetHandler)
-		r.Get("/api/targets", Targets_Handler)
-	})
+	r.Post("/api/targets/new", NewTargetHandler)
+	r.Get("/api/targets", Targets_Handler)
 
 	r.Get("/login", serveHTML("static/dist/index.html"))
 	r.Get("/dashboard", serveHTML("static/dist/index.html"))
@@ -71,8 +69,9 @@ func Run() {
 		r.ServeHTTP(w, req)
 	})
 
-	fmt.Println("[+] Server running on http://0.0.0.0:8080")
-	http.ListenAndServe(":8080", handler)
+	fmt.Println("[+] Server running on http://127.0.0.1:8080")
+	fmt.Println("[+] Ensure nginx is running and proxying!")
+	http.ListenAndServe("127.0.0.1:8080", handler)
 }
 
 func serveHTML(path string) http.HandlerFunc {
