@@ -4,8 +4,9 @@ import { fetchApi } from '../lib/types'
 import HostsTab from './HostsTab'
 import HitsTab from './HitsTab'
 import OverviewTab from './OverviewTab'
+import ReconTab from './ReconTab'
 
-type Tab = 'hosts' | 'hits' | 'js' | 'overview'
+type Tab = 'hosts' | 'hits' | 'recon' | 'overview'
 
 export default function DashboardPage() {
   const [tab,            setTab]            = useState<Tab>('hosts')
@@ -74,7 +75,7 @@ export default function DashboardPage() {
         <div className="header-date">{new Date().toLocaleString()}</div>
 
         <div className="dash-tabs">
-          {(['hosts', 'hits', 'js', 'overview'] as Tab[]).map(t => (
+          {(['hosts', 'hits', 'recon', 'overview'] as Tab[]).map(t => (
             <button
               key={t}
               className={`tab-btn tab-${t}${tab === t ? ' active' : ''}`}
@@ -82,7 +83,7 @@ export default function DashboardPage() {
             >
               {t === 'hosts'    && <>Host Enumeration <span className="tab-count">{stats?.total ?? '—'}</span></>}
               {t === 'hits'     && <>Juicy Hits <span className="tab-count">{hits.length || '—'}</span></>}
-              {t === 'js'       && <>JS Analysis <span className="tab-count">—</span></>}
+              {t === 'recon'    && <>Recon</>}
               {t === 'overview' && <>Overview <span className="tab-count">{hosts.length || '—'}</span></>}
             </button>
           ))}
@@ -128,17 +129,9 @@ export default function DashboardPage() {
         />
       )}
 
-      {tab === 'hits' && <HitsTab hits={hits} />}
-      {tab === 'js'   && <StubTab label="JS Analysis" color="var(--yellow)" />}
+      {tab === 'hits'  && <HitsTab hits={hits} />}
+      {tab === 'recon' && <ReconTab domain={domain} />}
     </div>
   )
 }
 
-function StubTab({ label, color }: { label: string; color: string }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, flexDirection: 'column', gap: 10 }}>
-      <div style={{ color, fontSize: 14, fontWeight: 600 }}>{label}</div>
-      <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>Migration in progress...</div>
-    </div>
-  )
-}

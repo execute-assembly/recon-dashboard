@@ -339,3 +339,26 @@ func GoAway_Handler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`<html><body>Stop looking here</body></html>`))
 }
+
+type Target struct {
+	Target string `json:"target"`
+}
+
+func Worflow_Handler(w http.ResponseWriter, r *http.Request) {
+
+	var TargetVal Target
+	if err := json.NewDecoder(r.Body).Decode(&TargetVal); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+
+	if TargetVal.Target == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Target Required"})
+		return
+	}
+
+	go tools.RunWorkFlow(TargetVal.Target)
+	writeJSON(w, http.StatusOK, map[string]string{"status": "started"})
+	return
+
+}

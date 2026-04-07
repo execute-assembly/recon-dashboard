@@ -355,7 +355,7 @@ body {
 .tab-btn:hover { color: var(--text); background: var(--surface2); }
 .tab-btn.active.tab-hosts    { color: var(--accent); border-bottom-color: var(--accent); }
 .tab-btn.active.tab-hits     { color: var(--orange); border-bottom-color: var(--orange); }
-.tab-btn.active.tab-js       { color: var(--yellow); border-bottom-color: var(--yellow); }
+.tab-btn.active.tab-recon    { color: var(--green);  border-bottom-color: var(--green); }
 .tab-btn.active.tab-overview { color: var(--text);   border-bottom-color: var(--text-dim); }
 .tab-count {
   font-size: 11px; padding: 1px 6px;
@@ -364,7 +364,6 @@ body {
 }
 .tab-btn.active.tab-hosts    .tab-count { background: var(--accent-dim); color: var(--accent); }
 .tab-btn.active.tab-hits     .tab-count { background: var(--orange-dim); color: var(--orange); }
-.tab-btn.active.tab-js       .tab-count { background: var(--yellow-dim); color: var(--yellow); }
 .tab-btn.active.tab-overview .tab-count { background: var(--surface2);   color: var(--text-dim); }
 
 /* ── Overview layout ── */
