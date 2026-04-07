@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/z3vxo/recon-dashboard/internal/server"
-	"github.com/z3vxo/recon-dashboard/internal/tools"
 )
 
 func setupLogs() *os.File {
@@ -31,8 +30,8 @@ func setupLogs() *os.File {
 }
 
 func main() {
-	tools.RunWorkFlow("clovr.dev")
-	return
+	// tools.RunWorkFlow("clovr.dev")
+	// return
 	f := setupLogs()
 	defer f.Close()
 	server.Run()
