@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/z3vxo/recon-dashboard/internal/server"
+	"github.com/z3vxo/recon-dashboard/internal/tools"
 )
 
 func setupLogs() *os.File {
@@ -34,5 +35,6 @@ func main() {
 	// return
 	f := setupLogs()
 	defer f.Close()
+	go tools.StartTeleGramBot()
 	server.Run()
 }
