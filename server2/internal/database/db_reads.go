@@ -5,6 +5,40 @@ import (
 	"strings"
 )
 
+type ReconStats struct {
+	Total int
+	S2xx  int
+	S4xx  int
+	S5xx  int
+	Hits  int
+}
+
+func GetStats(domain string) (ReconStats, error) {
+	db, err := getDB(domain)
+	if err != nil {
+		return ReconStats{}, err
+	}
+
+	var stats ReconStats
+
+	row := db.QueryRow(`SELECT
+		COUNT(*),
+		SUM(CASE WHEN status_code LIKE '2%' THEN 1 ELSE 0 END),
+		SUM(CASE WHEN status_code LIKE '4%' THEN 1 ELSE 0 END),
+		SUM(CASE WHEN status_code LIKE '5%' THEN 1 ELSE 0 END)
+		FROM domains`)
+	if err := row.Scan(&stats.Total, &stats.S2xx, &stats.S4xx, &stats.S5xx); err != nil {
+		return ReconStats{}, err
+	}
+
+	row = db.QueryRow(`SELECT COUNT(*) FROM juicy_hits`)
+	if err := row.Scan(&stats.Hits); err != nil {
+		return ReconStats{}, err
+	}
+
+	return stats, nil
+}
+
 func splitTrim(s string) []string {
 	var out []string
 	for _, p := range strings.Split(s, ",") {

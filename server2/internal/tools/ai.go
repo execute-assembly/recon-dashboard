@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+
+	"github.com/z3vxo/recon-dashboard/internal/database"
 )
 
 func SendTelegram(msg string) {
@@ -25,12 +27,27 @@ func RunWorkFlow(baseDomain string) {
 
 	cmd := exec.Command("./recon.sh", baseDomain)
 	cmd.Dir = ".."
-	out, err := cmd.CombinedOutput()
+	_, err := cmd.CombinedOutput()
 	if err != nil {
 		str := fmt.Sprintf("Failed Running recon pipeline: %s", err)
 		SendTelegram(str)
 	}
 
-	SendTelegram(string(out))
+	if err = database.CreateNewTarget(baseDomain); err != nil {
+		SendTelegram("[!] Failed Creating Database for target")
+	}
+
+	if err = database.ImportData(baseDomain); err != nil {
+		SendTelegram("[!] Failed ingesting for target")
+	}
+
+	stats, err := database.GetStats(baseDomain)
+	if err != nil {
+		SendTelegram(fmt.Sprintf("✅ recon done for %s (stats unavailable)", baseDomain))
+		return
+	}
+	msg := fmt.Sprintf("[*] Recon Done for %s\n---STATS---\n[+] Total Hosts %d\n[+] 2xx: %d\n[+] 4xx: %d\n[+] 5xx: %d\n[+] Endpoint hits: %d\n",
+		stats.Total, stats.S2xx, stats.S4xx, stats.S5xx, stats.Hits)
+	SendTelegram(msg)
 
 }
