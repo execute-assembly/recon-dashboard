@@ -37,6 +37,7 @@ func AnalyiseDomains(domain string) error {
 
 	domains, err := database.ReadHostsForAI(domain)
 	if err != nil {
+		fmt.Println("error1")
 		return err
 	}
 	fmt.Println("Anylising domains")
