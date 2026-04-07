@@ -10,11 +10,13 @@ import (
 )
 
 func setupLogs() *os.File {
-	if err := os.MkdirAll("./logs", 0755); err != nil {
+	home, _ := os.UserHomeDir()
+	logDir := home + "/.recon/logs"
+	if err := os.MkdirAll(logDir, 0755); err != nil {
 		log.Fatal(err)
 	}
 
-	f, err := os.OpenFile("./logs/recon.log",
+	f, err := os.OpenFile(logDir+"/recon.log",
 		os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		log.Fatal(err)

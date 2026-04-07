@@ -24,11 +24,17 @@ func migrateDB(db *sql.DB) {
 	db.Exec(`ALTER TABLE domains ADD COLUMN notes TEXT NOT NULL DEFAULT ''`)
 }
 
-const dbDir = "./databases"
-
-func dbPath(domain string) string {
-	return dbDir + "/" + domain + "_db.sql"
+func reconHome() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ".recon"
+	}
+	return home + "/.recon"
 }
+
+func dbDir() string  { return reconHome() + "/databases" }
+func DbDir() string  { return dbDir() }
+func dbPath(domain string) string { return dbDir() + "/" + domain + "_db.sql" }
 
 func getDB(domain string) (*sql.DB, error) {
 	mu.Lock()
@@ -56,11 +62,8 @@ func getDB(domain string) (*sql.DB, error) {
 // Handles creating new target database
 func CreateNewTarget(name string) error {
 
-	if _, err := os.Stat("./databases"); errors.Is(err, os.ErrNotExist) {
-		err := os.Mkdir("./databases", 0755)
-		if err != nil {
-			return err
-		}
+	if err := os.MkdirAll(dbDir(), 0755); err != nil {
+		return err
 	}
 
 	fullFileName := dbPath(name)

@@ -105,7 +105,7 @@ func Juicy_Handler(w http.ResponseWriter, r *http.Request) {
 
 // handles retreving the active targets from /databases/<domain>_db.sql, comes from targets.html
 func Targets_Handler(w http.ResponseWriter, r *http.Request) {
-	entries, err := os.ReadDir("./databases")
+	entries, err := os.ReadDir(database.DbDir())
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string][]string{"targets": []string{}})
@@ -251,7 +251,13 @@ type LoginData struct {
 	Password string `json:"password"`
 }
 
-const sessionsFile = "./sessions.json"
+var sessionsFile = func() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "./sessions.json"
+	}
+	return home + "/.recon/sessions.json"
+}()
 
 var sessions = map[string]time.Time{}
 
