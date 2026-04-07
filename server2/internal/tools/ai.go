@@ -23,7 +23,7 @@ func RunWorkFlow(baseDomain string) {
 	str := fmt.Sprintf("[*] Starting recon workflow on %s", baseDomain)
 	SendTelegram(str)
 
-	cmd := exec.Command("recon.sh", baseDomain)
+	cmd := exec.Command("./recon.sh", baseDomain)
 	cmd.Dir = ".."
 	out, err := cmd.CombinedOutput()
 	if err != nil {
