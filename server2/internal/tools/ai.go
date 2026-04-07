@@ -19,7 +19,7 @@ func SendTelegram(msg string) {
 }
 
 func RunWorkFlow(baseDomain string) {
-	cmd := exec.Command("../recon.sh", baseDomain)
+	cmd := exec.Command("recon.sh", baseDomain)
 	cmd.Dir = ".."
 	out, err := cmd.CombinedOutput()
 	if err != nil {
