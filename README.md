@@ -87,11 +87,14 @@ cd /path/to/recon && go run ./server2/cmd/main.go
 ![Target Selection](images/overview.png)
 
 **Dashboard**
-![Dashboard](images/dashboard.png)
+![Dashboard](images/hosts.jpg)
 
 **Overview**
-![Overview 1](images/overview1.png)
-![Overview 2](images/overview2.png)
+![Overview 1](images/overview.jpg)
+
+**Js Analysis** 
+![js 1](images/secrets.jpg)
+![js 1](images/secrets2.jpg)
 
 ---
 
