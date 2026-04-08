@@ -82,6 +82,7 @@ const (
 	CMD_START   = 1
 	CMD_TARGETS = 2
 	CMD_INFO    = 3
+	CMD_DOMAINS = 4
 )
 
 func CheckCommandType(message string) int {
@@ -91,6 +92,8 @@ func CheckCommandType(message string) int {
 		return CMD_TARGETS
 	} else if strings.HasPrefix(message, "/info") {
 		return CMD_INFO
+	} else if strings.HasPrefix(message, "/domains") {
+		return CMD_DOMAINS
 	}
 	return CMD_UNKNOWN
 }
@@ -119,6 +122,32 @@ func ListTargets() {
 		msg += "[+] <u>" + t + "</u>\n"
 	}
 	SendTelegram(msg)
+}
+
+func ListDomains(target string) {
+	names, err := database.GetDomainNames(target)
+	if err != nil {
+		SendTelegram(fmt.Sprintf("[!] Failed to read domains — %s", target))
+		return
+	}
+	if len(names) == 0 {
+		SendTelegram(fmt.Sprintf("[*] No domains found for %s", target))
+		return
+	}
+
+	const chunkSize = 10
+	for i := 0; i < len(names); i += chunkSize {
+		end := i + chunkSize
+		if end > len(names) {
+			end = len(names)
+		}
+		chunk := names[i:end]
+		msg := fmt.Sprintf("[*] Domains (%d-%d / %d):\n", i+1, end, len(names))
+		for _, n := range chunk {
+			msg += "[+] <u>" + n + "</u>\n"
+		}
+		SendTelegram(msg)
+	}
 }
 
 func ListInfo(domain string) {
@@ -167,6 +196,13 @@ func StartTeleGramBot() {
 					continue
 				}
 				go ListInfo(domain)
+			case CMD_DOMAINS:
+				target := strings.TrimSpace(strings.TrimPrefix(r.Message.Text, "/domains"))
+				if target == "" {
+					SendTelegram("[!] Error: target must be present\n/domains <target>")
+					continue
+				}
+				go ListDomains(target)
 			}
 		}
 		if len(Response.Result) > 0 {

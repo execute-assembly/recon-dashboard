@@ -197,6 +197,29 @@ func ReadHosts(domain string) (HostsResult, error) {
 	return HostsResult{Stats: stats, Hosts: hosts}, nil
 }
 
+func GetDomainNames(domain string) ([]string, error) {
+	db, err := getDB(domain)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := db.Query(`SELECT domain_name FROM domains ORDER BY domain_name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		names = append(names, name)
+	}
+	return names, rows.Err()
+}
+
 type DomainForAI struct {
 	URL    string
 	Status string
