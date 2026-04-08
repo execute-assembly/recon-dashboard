@@ -84,7 +84,7 @@ cd /path/to/recon && go run ./server2/cmd/main.go
 ## Screenshots
 
 **Target selection**
-![Target Selection](images/targets.png)
+![Target Selection](images/overview.png)
 
 **Dashboard**
 ![Dashboard](images/dashboard.png)
