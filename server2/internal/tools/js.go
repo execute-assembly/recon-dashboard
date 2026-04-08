@@ -201,7 +201,15 @@ func runTruffleHog(jsDir string) []database.JsSecret {
 }
 
 func analyzeJsFiles(jsDir, domain, hostURL string) error {
-	files, err := filepath.Glob(jsDir + "/response/*")
+	// httpx saves files into response/<hostname>/filename — walk the full tree
+	var files []string
+	err := filepath.Walk(jsDir+"/response", func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		files = append(files, path)
+		return nil
+	})
 	if err != nil || len(files) == 0 {
 		return nil
 	}

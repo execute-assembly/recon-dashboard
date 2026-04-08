@@ -12,9 +12,20 @@ interface Props {
 
 type ScanPhase = 'idle' | 'polling' | 'done' | 'failed'
 
+interface JsSecret {
+  file: string
+  type: string
+  value: string
+}
+
+interface JsLink {
+  file: string
+  url: string
+}
+
 interface JsResult {
-  secrets: string[]
-  links: string[]
+  secrets: JsSecret[]
+  links: JsLink[]
 }
 
 interface ScanState {
@@ -44,7 +55,7 @@ function useJsScan(domain: string, hostURL: string, headless: boolean) {
       .then(r => r.json())
       .then(d => {
         if (d.secrets || d.links) {
-          setScan({ phase: 'done', result: { secrets: d.secrets ?? [], links: d.links ?? [] } })
+          setScan({ phase: 'done', result: { secrets: d.secrets ?? [], links: d.links ?? [] } as JsResult })
         }
       })
       .catch(() => {})
@@ -76,7 +87,7 @@ function useJsScan(domain: string, hostURL: string, headless: boolean) {
             try {
               const r3 = await fetchApi(`/api/${enc(domain)}/host/${enc(hostURL)}/js`)
               const result = await r3.json()
-              setScan({ phase: 'done', jobId, result: { secrets: result.secrets ?? [], links: result.links ?? [] } })
+              setScan({ phase: 'done', jobId, result: { secrets: result.secrets ?? [], links: result.links ?? [] } as JsResult })
             } catch {
               setScan({ phase: 'failed', jobId, error: 'Failed to fetch results' })
             }
@@ -191,14 +202,17 @@ function HostJsPanel({ domain, host }: { domain: string; host: Host }) {
           ) : scan.result?.secrets.length === 0 ? (
             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>No secrets found.</div>
           ) : (
-            <div className="js-results-list">
-              {scan.result?.secrets.map((s, i) => (
-                <div key={i} className="js-result-item js-secret">
-                  <span className="badge badge-red" style={{ marginRight: 8, flexShrink: 0 }}>secret</span>
-                  <span className="js-result-value mono">{s}</span>
-                </div>
-              ))}
-            </div>
+            <table className="ov-hits-table">
+              <thead><tr><th>Type</th><th>Value</th></tr></thead>
+              <tbody>
+                {scan.result?.secrets.map((s, i) => (
+                  <tr key={i}>
+                    <td><span className="badge badge-red">{s.type}</span></td>
+                    <td className="mono" style={{ color: 'var(--red)', wordBreak: 'break-all' }}>{s.value}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         </div>
 
@@ -219,13 +233,16 @@ function HostJsPanel({ domain, host }: { domain: string; host: Host }) {
           ) : scan.result?.links.length === 0 ? (
             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>No links found.</div>
           ) : (
-            <div className="js-results-list">
-              {scan.result?.links.map((l, i) => (
-                <div key={i} className="js-result-item">
-                  <a href={l} target="_blank" rel="noreferrer" className="js-result-value mono">{l}</a>
-                </div>
-              ))}
-            </div>
+            <table className="ov-hits-table">
+              <thead><tr><th>URL</th></tr></thead>
+              <tbody>
+                {scan.result?.links.map((l, i) => (
+                  <tr key={i}>
+                    <td><a href={l.url} target="_blank" rel="noreferrer" className="mono">{l.url}</a></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         </div>
 
