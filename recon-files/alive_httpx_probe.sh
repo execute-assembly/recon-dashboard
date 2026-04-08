@@ -43,7 +43,7 @@ httpx_enrich() {
 
     echo -e "${BOLD}${BLUE}[+]${ENDCOLOR} Probing $(wc -l < "$subs_file") domains across common ports..."
 
-    httpx -silent -follow-redirects\
+    httpx -silent \
         -l "$subs_file" \
         -p "$PORTS" \
         -t 200 \
@@ -57,8 +57,40 @@ httpx_enrich() {
         -web-server \
         -ip \
         -cname \
+        -location \
         -json \
-        -o "$httpx_dir/${DOMAIN}_httpx_enriched.json" > /dev/null 2>&1 || true
+        -o "$httpx_dir/${DOMAIN}_httpx_raw.json" > /dev/null 2>&1 || true
+
+    # Drop alt-port entries that are just redirects to the canonical HTTPS site
+    python3 - "$httpx_dir/${DOMAIN}_httpx_raw.json" <<'EOF' > "$httpx_dir/${DOMAIN}_httpx_enriched.json"
+import sys, json
+from urllib.parse import urlparse
+
+for line in open(sys.argv[1]):
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        e = json.loads(line)
+    except json.JSONDecodeError:
+        print(line)
+        continue
+
+    sc = e.get("status_code", 0)
+    location = e.get("location", "")
+    url = e.get("url", "")
+
+    if 300 <= sc < 400 and location and url:
+        src = urlparse(url)
+        dst = urlparse(location)
+        if (src.hostname == dst.hostname
+                and dst.scheme == "https"
+                and dst.port in (None, 443)
+                and dst.path in ("", "/")):
+            continue  # redirect to canonical HTTPS root — skip
+
+    print(line)
+EOF
 
     local count=0
     [[ -s "$httpx_dir/${DOMAIN}_httpx_enriched.json" ]] && count=$(wc -l < "$httpx_dir/${DOMAIN}_httpx_enriched.json")
