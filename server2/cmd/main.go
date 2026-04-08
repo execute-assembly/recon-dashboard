@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/z3vxo/recon-dashboard/internal/server"
-	"github.com/z3vxo/recon-dashboard/internal/tools"
+	"github.com/z3vxo/vantage/internal/server"
+	"github.com/z3vxo/vantage/internal/tools"
 )
 
 func setupLogs() *os.File {
