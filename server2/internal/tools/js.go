@@ -13,7 +13,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/z3vxo/recon-dashboard/internal/database"
+	"github.com/z3vxo/vantage/internal/database"
 )
 
 func extractHostname(rawURL string) (string, error) {
