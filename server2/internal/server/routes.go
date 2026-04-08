@@ -399,9 +399,13 @@ func JsTool_Handler(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodPost:
+		var body struct {
+			Headless bool `json:"headless"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
 		id := uuid.NewString()
-		slog.Info("js scrape and scan started", "host", hostURL, "id", id)
-		go tools.ScrapeAndScan(hostURL, id, domain)
+		slog.Info("js scrape and scan started", "host", hostURL, "id", id, "headless", body.Headless)
+		go tools.ScrapeAndScan(hostURL, id, domain, body.Headless)
 		writeJSON(w, http.StatusOK, map[string]string{"id": id})
 
 	case http.MethodGet:

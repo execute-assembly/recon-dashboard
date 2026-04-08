@@ -26,7 +26,7 @@ interface ScanState {
 
 // ── JS scan hook ───────────────────────────────────────────────────────────
 
-function useJsScan(domain: string, hostURL: string) {
+function useJsScan(domain: string, hostURL: string, headless: boolean) {
   const [scan, setScan] = useState<ScanState>({ phase: 'idle' })
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const enc = encodeURIComponent
@@ -57,7 +57,11 @@ function useJsScan(domain: string, hostURL: string) {
     if (pollRef.current) return
     setScan({ phase: 'polling' })
     try {
-      const r = await fetchApi(`/api/${enc(domain)}/host/${enc(hostURL)}/js`, { method: 'POST' })
+      const r = await fetchApi(`/api/${enc(domain)}/host/${enc(hostURL)}/js`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ headless }),
+      })
       if (!r.ok) { setScan({ phase: 'failed', error: 'Failed to start scan' }); return }
       const data = await r.json()
       const jobId: string = data.id
@@ -97,7 +101,8 @@ function useJsScan(domain: string, hostURL: string) {
 // ── Host JS panel ──────────────────────────────────────────────────────────
 
 function HostJsPanel({ domain, host }: { domain: string; host: Host }) {
-  const { scan, startScan } = useJsScan(domain, host.url)
+  const [headless, setHeadless] = useState(false)
+  const { scan, startScan } = useJsScan(domain, host.url, headless)
 
   const scColor: Record<string, string> = {
     s200: 'var(--green)', s201: 'var(--green)', s301: 'var(--orange)',
@@ -126,13 +131,26 @@ function HostJsPanel({ domain, host }: { domain: string; host: Host }) {
         <div className="ov-section">
           <div className="ov-section-title action-section">
             JavaScript Analysis
-            <button
-              className="ov-action-btn"
-              disabled={scan.phase === 'polling'}
-              onClick={startScan}
-            >
-              {scan.phase === 'polling' ? 'Scanning...' : 'Scrape & Scan'}
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto' }}>
+              <label className="toggle-wrap">
+                <input
+                  type="checkbox"
+                  className="toggle-input"
+                  checked={headless}
+                  disabled={scan.phase === 'polling'}
+                  onChange={e => setHeadless(e.target.checked)}
+                />
+                <span className="toggle-slider" />
+                <span className="toggle-label">Headless</span>
+              </label>
+              <button
+                className="ov-action-btn"
+                disabled={scan.phase === 'polling'}
+                onClick={startScan}
+              >
+                {scan.phase === 'polling' ? 'Scanning...' : 'Scrape & Scan'}
+              </button>
+            </div>
           </div>
 
           {scan.phase === 'idle' && (

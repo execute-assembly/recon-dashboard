@@ -56,15 +56,13 @@ func runWayback(tmpDir, id, hostURL string) {
 	os.WriteFile(fileName, res, 0644)
 }
 
-func runKatana(tmpDir, id, hostURL string) {
+func runKatana(tmpDir, id, hostURL string, headless bool) {
 	fileName := fmt.Sprintf("%s/%s_katana.txt", tmpDir, id)
-	cmd := exec.Command("katana",
-		"-u", hostURL,
-		"-d", "2",
-		"-jc",
-		"-hl",
-		"-nos")
-	out, err := cmd.CombinedOutput()
+	args := []string{"-u", hostURL, "-d", "2", "-jc"}
+	if headless {
+		args = append(args, "-hl", "-nos")
+	}
+	out, err := exec.Command("katana", args...).CombinedOutput()
 	if err != nil {
 		slog.Error("js: katana failed", "host", hostURL, "err", err, "out", string(out))
 		return
@@ -99,8 +97,10 @@ func ScrapeJsFiles(hostURL, domain, tmpDir, id string) error {
 	}
 
 	jsList := fmt.Sprintf("%s/%s_js.txt", tmpDir, id)
-	if _, err := os.Stat(jsList); os.IsNotExist(err) {
-		return nil // no JS files found
+	info, err := os.Stat(jsList)
+	if os.IsNotExist(err) || (err == nil && info.Size() == 0) {
+		slog.Info("js: no JS URLs found, skipping download", "host", hostURL)
+		return nil
 	}
 
 	cmd := exec.Command("httpx",
@@ -239,7 +239,7 @@ func analyzeJsFiles(jsDir, domain, hostURL string) error {
 	return database.SaveJsResults(domain, hostURL, allSecrets, allLinks)
 }
 
-func ScrapeAndScan(host, id, domain string) {
+func ScrapeAndScan(host, id, domain string, headless bool) {
 	SetJob(id, JobResult{Status: JobPending})
 
 	tmpDir := fmt.Sprintf("./temp/%s", id)
@@ -252,7 +252,7 @@ func ScrapeAndScan(host, id, domain string) {
 	wg.Add(3)
 	go func() { defer wg.Done(); runGau(tmpDir, id, host) }()
 	go func() { defer wg.Done(); runWayback(tmpDir, id, host) }()
-	go func() { defer wg.Done(); runKatana(tmpDir, id, host) }()
+	go func() { defer wg.Done(); runKatana(tmpDir, id, host, headless) }()
 	wg.Wait()
 
 	if err := deDupeAndExtract(tmpDir, host, id); err != nil {
