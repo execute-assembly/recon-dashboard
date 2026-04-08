@@ -14,8 +14,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/z3vxo/recon-dashboard/internal/database"
-	"github.com/z3vxo/recon-dashboard/internal/tools"
+	"github.com/z3vxo/vantage/internal/database"
+	"github.com/z3vxo/vantage/internal/tools"
 )
 
 type TriageData struct {
