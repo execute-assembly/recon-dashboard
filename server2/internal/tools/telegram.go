@@ -37,8 +37,9 @@ func SendTelegram(msg string) {
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage",
 		token)
 	http.PostForm(url, map[string][]string{
-		"chat_id": {chatID},
-		"text":    {msg},
+		"chat_id":    {chatID},
+		"text":       {msg},
+		"parse_mode": {"HTML"},
 	})
 }
 
@@ -115,7 +116,7 @@ func ListTargets() {
 
 	msg := "[*] Targets:\n"
 	for _, t := range targets {
-		msg += "[+] " + t + "\n"
+		msg += "[+] <u>" + t + "</u>\n"
 	}
 	SendTelegram(msg)
 }
@@ -128,7 +129,7 @@ func ListInfo(domain string) {
 	}
 
 	msg := fmt.Sprintf(
-		"[*] Info — %s\n\n[+] Hosts: %d\n[+] 2xx: %d | 4xx: %d | 5xx: %d\n[+] Endpoint hits: %d",
+		"[*] Info — %s\n\n[+] Hosts: %d\n🟢 2xx: %d\n🟡 4xx: %d\n🔴 5xx: %d\n[+] Endpoint hits: %d",
 		domain, stats.Total, stats.S2xx, stats.S4xx, stats.S5xx, stats.Hits,
 	)
 	SendTelegram(msg)
@@ -211,7 +212,7 @@ func RunWorkFlow(baseDomain string) {
 	}
 
 	msg := fmt.Sprintf(
-		"[*] Recon Done — %s\n\n[+] Hosts: %d\n[+] 2xx: %d | 4xx: %d | 5xx: %d\n[+] Endpoint hits: %d",
+		"[*] Recon Done — %s\n\n[+] Hosts: %d\n🟢 2xx: %d\n🟡 4xx: %d\n🔴 5xx: %d\n[+] Endpoint hits: %d",
 		baseDomain, stats.Total, stats.S2xx, stats.S4xx, stats.S5xx, stats.Hits,
 	)
 	SendTelegram(msg)
