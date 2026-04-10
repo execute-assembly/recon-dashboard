@@ -23,6 +23,7 @@ func Run() {
 
 	r.Get("/api/{domain}/hosts", Host_Handler)
 	r.Get("/api/{domain}/hits", Juicy_Handler)
+	r.Get("/api/{domain}/summary", Summary_Handler)
 
 	r.Patch("/api/{domain}/host/{hostURL}/triage", Triage_Handler)
 	r.Patch("/api/{domain}/host/{hostURL}/notes", Notes_Handler)

@@ -1,6 +1,7 @@
 package database
 
 import (
+	"database/sql"
 	"strconv"
 	"strings"
 )
@@ -150,9 +151,14 @@ func ReadHosts(domain string) (HostsResult, error) {
 	}
 
 	rows, err := db.Query(`
-		SELECT id, domain_name, status_code, open_ports, title, tech_stack,
-		       content_type, server, ips, cname, badges, triage_status, notes
-		FROM domains
+		SELECT d.id, d.domain_name, d.status_code, d.open_ports, d.title,
+			COALESCE((SELECT GROUP_CONCAT(tech, ', ') FROM domain_tech   WHERE domain_id = d.id), '') AS tech_stack,
+			d.content_type, d.server,
+			COALESCE((SELECT GROUP_CONCAT(ip,   ', ') FROM domain_ips    WHERE domain_id = d.id), '') AS ips,
+			COALESCE((SELECT GROUP_CONCAT(cname,', ') FROM domain_cnames WHERE domain_id = d.id), '') AS cnames,
+			COALESCE((SELECT GROUP_CONCAT(badge,', ') FROM domain_badges WHERE domain_id = d.id), '') AS badges,
+			d.triage_status, d.notes
+		FROM domains d
 	`)
 	if err != nil {
 		return HostsResult{}, err
@@ -223,6 +229,52 @@ func GetDomainNames(domain string) ([]DomainEntry, error) {
 		entries = append(entries, e)
 	}
 	return entries, rows.Err()
+}
+
+func scanCountRows(rows *sql.Rows) []CountEntry {
+	var out []CountEntry
+	defer rows.Close()
+	for rows.Next() {
+		var e CountEntry
+		rows.Scan(&e.Name, &e.Count)
+		out = append(out, e)
+	}
+	if out == nil {
+		out = []CountEntry{}
+	}
+	return out
+}
+
+func GetSummary(domain string) (SummaryData, error) {
+	db, err := getDB(domain)
+	if err != nil {
+		return SummaryData{}, err
+	}
+
+	var s SummaryData
+
+	db.QueryRow(`SELECT COUNT(*) FROM domains`).Scan(&s.TotalHosts)
+	db.QueryRow(`SELECT COUNT(DISTINCT ip) FROM domain_ips`).Scan(&s.UniqueIPs)
+	db.QueryRow(`SELECT COUNT(*) FROM domains WHERE triage_status != ''`).Scan(&s.TriageReviewed)
+	db.QueryRow(`SELECT COUNT(*) FROM juicy_hits`).Scan(&s.JuicyHits)
+
+	if rows, err := db.Query(`SELECT status_code, COUNT(*) FROM domains GROUP BY status_code ORDER BY COUNT(*) DESC`); err == nil {
+		s.StatusCodes = scanCountRows(rows)
+	}
+	if rows, err := db.Query(`SELECT tech, COUNT(*) FROM domain_tech GROUP BY tech ORDER BY COUNT(*) DESC LIMIT 15`); err == nil {
+		s.TechStack = scanCountRows(rows)
+	}
+	if rows, err := db.Query(`SELECT cname, COUNT(*) FROM domain_cnames GROUP BY cname ORDER BY COUNT(*) DESC LIMIT 10`); err == nil {
+		s.TopCnames = scanCountRows(rows)
+	}
+	if rows, err := db.Query(`SELECT ip, COUNT(*) FROM domain_ips GROUP BY ip ORDER BY COUNT(*) DESC LIMIT 10`); err == nil {
+		s.TopIPs = scanCountRows(rows)
+	}
+	if rows, err := db.Query(`SELECT badge, COUNT(*) FROM domain_badges GROUP BY badge ORDER BY COUNT(*) DESC`); err == nil {
+		s.Badges = scanCountRows(rows)
+	}
+
+	return s, nil
 }
 
 type DomainForAI struct {

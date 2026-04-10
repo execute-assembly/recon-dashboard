@@ -2,7 +2,7 @@ package database
 
 import (
 	"bufio"
-	//"crypto/rand"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -176,7 +176,6 @@ func ImportPathHits(domain string) error {
 }
 
 func ImportHttpx(domain string) error {
-
 	db, err := getDB(domain)
 	if err != nil {
 		return fmt.Errorf("failed to get db: %w", err)
@@ -198,36 +197,61 @@ func ImportHttpx(domain string) error {
 	if err != nil {
 		return err
 	}
-	//  domain_name  TEXT UNIQUE,
-	//     status_code  INT,
-	//     open_ports   TEXT,
-	//     title        TEXT,
-	//     tech_stack   TEXT,
-	//     content_type TEXT,
-	//     server       TEXT,
-	//     ips          TEXT,
-	//     cname        TEXT,
-	//     badges       TEXT
-	// );`)
 
-	stmt, err := tx.Prepare(`INSERT INTO domains (domain_name, status_code, title, server, content_type, tech_stack, ips, cname, open_ports, badges)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(domain_name) DO UPDATE SET
-            status_code  = excluded.status_code,
-            title        = excluded.title,
-            server       = excluded.server,
-            content_type = excluded.content_type,
-            tech_stack   = excluded.tech_stack,
-            ips          = excluded.ips,
-            cname        = excluded.cname,
-            open_ports   = excluded.open_ports,
-            badges       = excluded.badges`)
+	stmtDomain, err := tx.Prepare(`
+		INSERT INTO domains (domain_name, status_code, title, server, content_type, open_ports)
+		VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT(domain_name) DO UPDATE SET
+			status_code  = excluded.status_code,
+			title        = excluded.title,
+			server       = excluded.server,
+			content_type = excluded.content_type,
+			open_ports   = excluded.open_ports`)
 	if err != nil {
 		tx.Rollback()
-
 		return err
 	}
-	defer stmt.Close()
+	defer stmtDomain.Close()
+
+	stmtGetID, err := tx.Prepare(`SELECT id FROM domains WHERE domain_name = ?`)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	defer stmtGetID.Close()
+
+	type juncStmt struct{ del, ins *sql.Stmt }
+	makeJunc := func(table, col string) (juncStmt, error) {
+		del, err := tx.Prepare(fmt.Sprintf(`DELETE FROM %s WHERE domain_id = ?`, table))
+		if err != nil {
+			return juncStmt{}, err
+		}
+		ins, err := tx.Prepare(fmt.Sprintf(`INSERT OR IGNORE INTO %s (domain_id, %s) VALUES (?, ?)`, table, col))
+		if err != nil {
+			return juncStmt{}, err
+		}
+		return juncStmt{del, ins}, nil
+	}
+
+	jIPs, err := makeJunc("domain_ips", "ip")
+	if err != nil { tx.Rollback(); return err }
+	defer jIPs.del.Close()
+	defer jIPs.ins.Close()
+
+	jCnames, err := makeJunc("domain_cnames", "cname")
+	if err != nil { tx.Rollback(); return err }
+	defer jCnames.del.Close()
+	defer jCnames.ins.Close()
+
+	jTech, err := makeJunc("domain_tech", "tech")
+	if err != nil { tx.Rollback(); return err }
+	defer jTech.del.Close()
+	defer jTech.ins.Close()
+
+	jBadges, err := makeJunc("domain_badges", "badge")
+	if err != nil { tx.Rollback(); return err }
+	defer jBadges.del.Close()
+	defer jBadges.ins.Close()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -236,18 +260,39 @@ func ImportHttpx(domain string) error {
 			continue
 		}
 
-		badges := computeBadges(entry.URL, entry.Title, entry.Tech)
-
-		_, err = stmt.Exec(entry.URL, entry.StatusCode, entry.Title, entry.WebServer, entry.ContentType,
-			strings.Join(entry.Tech, ", "),
-			strings.Join(entry.IPs, ", "),
-			strings.Join(entry.CNAME, ", "),
-			joinInts(entry.OpenPorts), badges)
-
+		result, err := stmtDomain.Exec(entry.URL, entry.StatusCode, entry.Title, entry.WebServer, entry.ContentType, joinInts(entry.OpenPorts))
 		if err != nil {
-			tx.Rollback() // rollback on any error
-			fmt.Println("failed to insert:", err)
+			tx.Rollback()
+			fmt.Println("failed to insert domain:", err)
 			return err
+		}
+
+		var domainID int64
+		if id, err := result.LastInsertId(); err == nil && id > 0 {
+			domainID = id
+		} else {
+			stmtGetID.QueryRow(entry.URL).Scan(&domainID)
+		}
+
+		jIPs.del.Exec(domainID)
+		for _, v := range entry.IPs {
+			jIPs.ins.Exec(domainID, strings.TrimSpace(v))
+		}
+
+		jCnames.del.Exec(domainID)
+		for _, v := range entry.CNAME {
+			jCnames.ins.Exec(domainID, strings.TrimSpace(v))
+		}
+
+		jTech.del.Exec(domainID)
+		for _, v := range entry.Tech {
+			jTech.ins.Exec(domainID, strings.TrimSpace(v))
+		}
+
+		badges := computeBadges(entry.URL, entry.Title, entry.Tech)
+		jBadges.del.Exec(domainID)
+		for _, v := range splitTrim(badges) {
+			jBadges.ins.Exec(domainID, v)
 		}
 	}
 	if err := scanner.Err(); err != nil {

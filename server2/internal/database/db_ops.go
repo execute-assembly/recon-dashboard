@@ -41,6 +41,63 @@ func migrateDB(db *sql.DB) {
 		url        TEXT,
 		FOREIGN KEY(js_file_id) REFERENCES js_files(id)
 	)`)
+
+	// Junction tables — normalise comma-separated columns
+	db.Exec(`CREATE TABLE IF NOT EXISTS domain_ips (
+		id        INTEGER PRIMARY KEY AUTOINCREMENT,
+		domain_id INTEGER NOT NULL REFERENCES domains(id),
+		ip        TEXT NOT NULL,
+		UNIQUE(domain_id, ip)
+	)`)
+	db.Exec(`CREATE TABLE IF NOT EXISTS domain_cnames (
+		id        INTEGER PRIMARY KEY AUTOINCREMENT,
+		domain_id INTEGER NOT NULL REFERENCES domains(id),
+		cname     TEXT NOT NULL,
+		UNIQUE(domain_id, cname)
+	)`)
+	db.Exec(`CREATE TABLE IF NOT EXISTS domain_tech (
+		id        INTEGER PRIMARY KEY AUTOINCREMENT,
+		domain_id INTEGER NOT NULL REFERENCES domains(id),
+		tech      TEXT NOT NULL,
+		UNIQUE(domain_id, tech)
+	)`)
+	db.Exec(`CREATE TABLE IF NOT EXISTS domain_badges (
+		id        INTEGER PRIMARY KEY AUTOINCREMENT,
+		domain_id INTEGER NOT NULL REFERENCES domains(id),
+		badge     TEXT NOT NULL,
+		UNIQUE(domain_id, badge)
+	)`)
+
+	// Backfill junction tables from existing comma-separated columns (idempotent)
+	backfillJunctionTables(db)
+}
+
+func backfillJunctionTables(db *sql.DB) {
+	rows, err := db.Query(`SELECT id, ips, cname, tech_stack, badges FROM domains`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var id int
+		var ips, cname, tech, badges string
+		if err := rows.Scan(&id, &ips, &cname, &tech, &badges); err != nil {
+			continue
+		}
+		for _, v := range splitTrim(ips) {
+			db.Exec(`INSERT OR IGNORE INTO domain_ips (domain_id, ip) VALUES (?, ?)`, id, v)
+		}
+		for _, v := range splitTrim(cname) {
+			db.Exec(`INSERT OR IGNORE INTO domain_cnames (domain_id, cname) VALUES (?, ?)`, id, v)
+		}
+		for _, v := range splitTrim(tech) {
+			db.Exec(`INSERT OR IGNORE INTO domain_tech (domain_id, tech) VALUES (?, ?)`, id, v)
+		}
+		for _, v := range splitTrim(badges) {
+			db.Exec(`INSERT OR IGNORE INTO domain_badges (domain_id, badge) VALUES (?, ?)`, id, v)
+		}
+	}
 }
 
 func reconHome() string {
@@ -133,6 +190,37 @@ func CreateNewTarget(name string) error {
 	if err != nil {
 		fmt.Println(err)
 		return err
+	}
+
+	for _, ddl := range []string{
+		`CREATE TABLE IF NOT EXISTS domain_ips (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			domain_id INTEGER NOT NULL REFERENCES domains(id),
+			ip TEXT NOT NULL,
+			UNIQUE(domain_id, ip)
+		)`,
+		`CREATE TABLE IF NOT EXISTS domain_cnames (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			domain_id INTEGER NOT NULL REFERENCES domains(id),
+			cname TEXT NOT NULL,
+			UNIQUE(domain_id, cname)
+		)`,
+		`CREATE TABLE IF NOT EXISTS domain_tech (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			domain_id INTEGER NOT NULL REFERENCES domains(id),
+			tech TEXT NOT NULL,
+			UNIQUE(domain_id, tech)
+		)`,
+		`CREATE TABLE IF NOT EXISTS domain_badges (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			domain_id INTEGER NOT NULL REFERENCES domains(id),
+			badge TEXT NOT NULL,
+			UNIQUE(domain_id, badge)
+		)`,
+	} {
+		if _, err := db.Exec(ddl); err != nil {
+			return err
+		}
 	}
 
 	slog.Info("New Target Created", "domain", name)

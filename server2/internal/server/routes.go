@@ -419,6 +419,17 @@ func JsTool_Handler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func Summary_Handler(w http.ResponseWriter, r *http.Request) {
+	domain := chi.URLParam(r, "domain")
+	data, err := database.GetSummary(domain)
+	if err != nil {
+		slog.Error("failed to get summary", "domain", domain, "err", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, data)
+}
+
 func ToolStatus_Handler(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("id")
 	if id == "" {

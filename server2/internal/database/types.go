@@ -116,3 +116,20 @@ type HitResponse struct {
 	Size       string `json:"size"`
 	Severity   string `json:"severity"`
 }
+
+type CountEntry struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+}
+
+type SummaryData struct {
+	TotalHosts     int          `json:"total_hosts"`
+	UniqueIPs      int          `json:"unique_ips"`
+	TriageReviewed int          `json:"triage_reviewed"`
+	JuicyHits      int          `json:"juicy_hits"`
+	StatusCodes    []CountEntry `json:"status_codes"`
+	TechStack      []CountEntry `json:"tech_stack"`
+	TopCnames      []CountEntry `json:"top_cnames"`
+	TopIPs         []CountEntry `json:"top_ips"`
+	Badges         []CountEntry `json:"badges"`
+}

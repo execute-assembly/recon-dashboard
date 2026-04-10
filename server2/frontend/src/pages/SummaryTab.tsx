@@ -1,65 +1,21 @@
-// SummaryTab — target intelligence overview (fake data for now)
+import { useState, useEffect } from 'react'
+import { fetchApi } from '../lib/types'
 
-const FAKE = {
-  totalHosts: 247,
-  uniqueIPs: 89,
-  statusGroups: { '2xx': 156, '3xx': 43, '4xx': 38, '5xx': 10 },
-  statusCodes: [
-    { code: '200', count: 134 },
-    { code: '201', count: 22 },
-    { code: '301', count: 31 },
-    { code: '302', count: 12 },
-    { code: '401', count: 18 },
-    { code: '403', count: 20 },
-    { code: '500', count: 7 },
-    { code: '503', count: 3 },
-  ],
-  techStack: [
-    { name: 'Nginx',       count: 89 },
-    { name: 'Cloudflare',  count: 67 },
-    { name: 'React',       count: 45 },
-    { name: 'jQuery',      count: 34 },
-    { name: 'PHP',         count: 23 },
-    { name: 'WordPress',   count: 18 },
-    { name: 'Node.js',     count: 15 },
-    { name: 'Apache',      count: 12 },
-    { name: 'Bootstrap',   count: 9  },
-    { name: 'Laravel',     count: 6  },
-  ],
-  cnames: [
-    { cname: 'cloudfront.net',    count: 34 },
-    { cname: 'amazonaws.com',     count: 23 },
-    { cname: 'fastly.net',        count: 12 },
-    { cname: 'cloudflare.com',    count: 8  },
-    { cname: 'azurefd.net',       count: 4  },
-    { cname: 'akamaiedge.net',    count: 3  },
-  ],
-  topIPs: [
-    { ip: '104.21.14.x',   count: 12 },
-    { ip: '172.67.183.x',  count: 8  },
-    { ip: '13.227.85.x',   count: 7  },
-    { ip: '151.101.x.x',   count: 6  },
-    { ip: '52.84.x.x',     count: 5  },
-  ],
-  badges: [
-    { badge: 'api',        count: 23, color: 'var(--accent)'  },
-    { badge: 'auth',       count: 18, color: 'var(--orange)'  },
-    { badge: 'cms',        count: 12, color: 'var(--yellow)'  },
-    { badge: 'admin',      count: 7,  color: 'var(--red)'     },
-    { badge: 'monitoring', count: 4,  color: 'var(--green)'   },
-    { badge: 'dev',        count: 5,  color: 'var(--orange)'  },
-    { badge: 'cicd',       count: 3,  color: 'var(--yellow)'  },
-    { badge: 'storage',    count: 6,  color: 'var(--accent)'  },
-  ],
-  triageReviewed: 45,
-  juicyHits: 31,
+interface CountEntry {
+  name: string
+  count: number
 }
 
-const scGroupColor: Record<string, string> = {
-  '2xx': 'var(--green)',
-  '3xx': 'var(--orange)',
-  '4xx': 'var(--red)',
-  '5xx': 'var(--yellow)',
+interface SummaryData {
+  total_hosts: number
+  unique_ips: number
+  triage_reviewed: number
+  juicy_hits: number
+  status_codes: CountEntry[]
+  tech_stack: CountEntry[]
+  top_cnames: CountEntry[]
+  top_ips: CountEntry[]
+  badges: CountEntry[]
 }
 
 function statusCodeColor(code: string): string {
@@ -70,11 +26,25 @@ function statusCodeColor(code: string): string {
   return 'var(--text-dim)'
 }
 
+const badgeColor: Record<string, string> = {
+  api:        'var(--accent)',
+  auth:       'var(--orange)',
+  admin:      'var(--red)',
+  cms:        'var(--yellow)',
+  monitoring: 'var(--green)',
+  dev:        'var(--orange)',
+  cicd:       'var(--yellow)',
+  storage:    'var(--accent)',
+  collab:     'var(--text-dim)',
+  docs:       'var(--text-dim)',
+  default:    'var(--text-muted)',
+}
+
 function Bar({ value, max, color }: { value: number; max: number; color: string }) {
-  const pct = Math.round((value / max) * 100)
+  const pct = max > 0 ? Math.round((value / max) * 100) : 0
   return (
     <div style={{ flex: 1, height: 4, background: 'var(--border2)', borderRadius: 2, overflow: 'hidden' }}>
-      <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 2, transition: 'width 0.3s' }} />
+      <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 2 }} />
     </div>
   )
 }
@@ -135,13 +105,74 @@ function StatCard({ label, value, color }: { label: string; value: number | stri
   )
 }
 
+function BarList({ items, color, colorFn }: {
+  items: CountEntry[]
+  color?: string
+  colorFn?: (name: string) => string
+}) {
+  const max = items[0]?.count ?? 1
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+      {items.map(({ name, count }) => (
+        <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            width: 110, fontSize: 12,
+            fontFamily: "'Fira Code', monospace",
+            color: colorFn ? colorFn(name) : (color ?? 'var(--text)'),
+            flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {name}
+          </div>
+          <Bar value={count} max={max} color={colorFn ? colorFn(name) : (color ?? 'var(--accent)')} />
+          <div style={{ width: 28, fontSize: 11, color: 'var(--text-muted)', textAlign: 'right', fontFamily: "'Fira Code', monospace", flexShrink: 0 }}>
+            {count}
+          </div>
+        </div>
+      ))}
+      {items.length === 0 && (
+        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>No data yet — run an import.</div>
+      )}
+    </div>
+  )
+}
+
 export default function SummaryTab({ domain }: { domain: string }) {
-  const d = FAKE
-  const maxTech = d.techStack[0]?.count ?? 1
-  const maxCode = Math.max(...d.statusCodes.map(s => s.count))
-  const maxCname = d.cnames[0]?.count ?? 1
-  const maxIP = d.topIPs[0]?.count ?? 1
-  const triagePct = Math.round((d.triageReviewed / d.totalHosts) * 100)
+  const [data, setData] = useState<SummaryData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setLoading(true)
+    fetchApi(`/api/${encodeURIComponent(domain)}/summary`)
+      .then(r => r.json())
+      .then(d => { setData(d); setLoading(false) })
+      .catch(e => { setError(e.message); setLoading(false) })
+  }, [domain])
+
+  if (loading) {
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+        Loading summary...
+      </div>
+    )
+  }
+
+  if (error || !data) {
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--red)', fontSize: 13 }}>
+        {error ?? 'Failed to load summary'}
+      </div>
+    )
+  }
+
+  const triagePct = data.total_hosts > 0 ? Math.round((data.triage_reviewed / data.total_hosts) * 100) : 0
+
+  // group status codes into 2xx/3xx/4xx/5xx for stat cards
+  const scGroups: Record<string, number> = {}
+  for (const { name, count } of data.status_codes) {
+    const grp = name[0] + 'xx'
+    scGroups[grp] = (scGroups[grp] ?? 0) + count
+  }
 
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -150,72 +181,45 @@ export default function SummaryTab({ domain }: { domain: string }) {
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
         <div style={{ fontSize: 15, fontWeight: 600 }}>Target Summary</div>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: "'Fira Code', monospace" }}>{domain}</div>
-        <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic' }}>
-          ⚠ fake data — wire up backend to populate
-        </div>
       </div>
 
-      {/* Stat cards row */}
+      {/* Stat cards */}
       <div style={{ display: 'flex', gap: 12 }}>
-        <StatCard label="Total Hosts"  value={d.totalHosts} />
-        <StatCard label="Unique IPs"   value={d.uniqueIPs} />
-        <StatCard label="Juicy Hits"   value={d.juicyHits} color="var(--orange)" />
-        {Object.entries(d.statusGroups).map(([grp, count]) => (
-          <StatCard key={grp} label={grp} value={count} color={scGroupColor[grp]} />
+        <StatCard label="Total Hosts"  value={data.total_hosts} />
+        <StatCard label="Unique IPs"   value={data.unique_ips} />
+        <StatCard label="Juicy Hits"   value={data.juicy_hits}  color="var(--orange)" />
+        {['2xx','3xx','4xx','5xx'].filter(g => scGroups[g]).map(g => (
+          <StatCard key={g} label={g} value={scGroups[g]} color={statusCodeColor(g[0])} />
         ))}
       </div>
 
-      {/* Row 2: tech stack + status codes + badges */}
+      {/* Row 2: tech + status codes + badges/triage */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
 
-        {/* Tech stack */}
         <Card>
           <CardTitle>Tech Stack</CardTitle>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-            {d.techStack.map(({ name, count }) => (
-              <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 90, fontSize: 12, color: 'var(--text)', flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {name}
-                </div>
-                <Bar value={count} max={maxTech} color="var(--accent)" />
-                <div style={{ width: 28, fontSize: 11, color: 'var(--text-muted)', textAlign: 'right', fontFamily: "'Fira Code', monospace", flexShrink: 0 }}>
-                  {count}
-                </div>
-              </div>
-            ))}
-          </div>
+          <BarList items={data.tech_stack} color="var(--accent)" />
         </Card>
 
-        {/* Status code breakdown */}
         <Card>
           <CardTitle>Status Codes</CardTitle>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-            {d.statusCodes.map(({ code, count }) => (
-              <div key={code} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 36, fontSize: 12, fontFamily: "'Fira Code', monospace", color: statusCodeColor(code), flexShrink: 0 }}>
-                  {code}
-                </div>
-                <Bar value={count} max={maxCode} color={statusCodeColor(code)} />
-                <div style={{ width: 28, fontSize: 11, color: 'var(--text-muted)', textAlign: 'right', fontFamily: "'Fira Code', monospace", flexShrink: 0 }}>
-                  {count}
-                </div>
-              </div>
-            ))}
-          </div>
+          <BarList items={data.status_codes} colorFn={statusCodeColor} />
         </Card>
 
-        {/* Badges + triage */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Card style={{ flex: 1 }}>
             <CardTitle>Badges</CardTitle>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {d.badges.map(({ badge, count, color }) => (
-                <div key={badge} style={{
+              {data.badges.length === 0 && (
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>No data yet.</div>
+              )}
+              {data.badges.map(({ name, count }) => (
+                <div key={name} style={{
                   display: 'flex', alignItems: 'center', gap: 6,
                   background: 'var(--surface2)', border: '1px solid var(--border2)',
                   borderRadius: 6, padding: '5px 10px',
                 }}>
-                  <span style={{ fontSize: 11, color, fontWeight: 600 }}>{badge}</span>
+                  <span style={{ fontSize: 11, color: badgeColor[name] ?? 'var(--text-dim)', fontWeight: 600 }}>{name}</span>
                   <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: "'Fira Code', monospace" }}>{count}</span>
                 </div>
               ))}
@@ -227,59 +231,32 @@ export default function SummaryTab({ domain }: { domain: string }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                 <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  <span style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', fontFamily: "'Fira Code', monospace" }}>{d.triageReviewed}</span>
-                  {' / '}{d.totalHosts} reviewed
+                  <span style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', fontFamily: "'Fira Code', monospace" }}>{data.triage_reviewed}</span>
+                  {' / '}{data.total_hosts} reviewed
                 </span>
                 <span style={{ fontSize: 12, color: 'var(--accent)', fontFamily: "'Fira Code', monospace", fontWeight: 700 }}>{triagePct}%</span>
               </div>
               <div style={{ height: 6, background: 'var(--border2)', borderRadius: 3, overflow: 'hidden' }}>
-                <div style={{ width: `${triagePct}%`, height: '100%', background: 'var(--accent)', borderRadius: 3, transition: 'width 0.3s' }} />
+                <div style={{ width: `${triagePct}%`, height: '100%', background: 'var(--accent)', borderRadius: 3 }} />
               </div>
             </div>
           </Card>
         </div>
       </div>
 
-      {/* Row 3: CNAMEs + IPs + ASN */}
+      {/* Row 3: CNAMEs + IPs + ASN placeholder */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
 
-        {/* Top CNAMEs */}
         <Card>
           <CardTitle>Top CNAMEs</CardTitle>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-            {d.cnames.map(({ cname, count }) => (
-              <div key={cname} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ flex: 1, fontSize: 12, fontFamily: "'Fira Code', monospace", color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {cname}
-                </div>
-                <Bar value={count} max={maxCname} color="var(--orange)" />
-                <div style={{ width: 28, fontSize: 11, color: 'var(--text-muted)', textAlign: 'right', fontFamily: "'Fira Code', monospace", flexShrink: 0 }}>
-                  {count}
-                </div>
-              </div>
-            ))}
-          </div>
+          <BarList items={data.top_cnames} color="var(--orange)" />
         </Card>
 
-        {/* Top IPs */}
         <Card>
           <CardTitle>Top IPs</CardTitle>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-            {d.topIPs.map(({ ip, count }) => (
-              <div key={ip} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 110, fontSize: 12, fontFamily: "'Fira Code', monospace", color: 'var(--text)', flexShrink: 0 }}>
-                  {ip}
-                </div>
-                <Bar value={count} max={maxIP} color="var(--yellow)" />
-                <div style={{ width: 28, fontSize: 11, color: 'var(--text-muted)', textAlign: 'right', fontFamily: "'Fira Code', monospace", flexShrink: 0 }}>
-                  {count}
-                </div>
-              </div>
-            ))}
-          </div>
+          <BarList items={data.top_ips} color="var(--yellow)" />
         </Card>
 
-        {/* ASN — placeholder */}
         <Card>
           <CardTitle>ASN Intelligence</CardTitle>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -311,21 +288,8 @@ export default function SummaryTab({ domain }: { domain: string }) {
                 Lookup
               </button>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {[
-                { label: 'AS13335',    value: 'Cloudflare, Inc.' },
-                { label: 'Prefixes',   value: '12 IPv4 ranges' },
-                { label: 'Total IPs',  value: '196,608' },
-                { label: 'Peers',      value: '8 upstream ASNs' },
-              ].map(({ label, value }) => (
-                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                  <span style={{ color: 'var(--text-muted)', fontFamily: "'Fira Code', monospace" }}>{label}</span>
-                  <span style={{ color: 'var(--text)' }}>{value}</span>
-                </div>
-              ))}
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic', marginTop: 4 }}>
-              ASN lookup not yet wired up
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+              ASN lookup coming soon
             </div>
           </div>
         </Card>
