@@ -6,8 +6,9 @@ import HitsTab from './HitsTab'
 import OverviewTab from './OverviewTab'
 import ReconTab from './ReconTab'
 import JSTab from './JSTab'
+import SummaryTab from './SummaryTab'
 
-type Tab = 'hosts' | 'hits' | 'recon' | 'overview' | 'js'
+type Tab = 'hosts' | 'hits' | 'recon' | 'overview' | 'js' | 'summary'
 
 export default function DashboardPage() {
   const [tab,            setTab]            = useState<Tab>('hosts')
@@ -76,12 +77,13 @@ export default function DashboardPage() {
         <div className="header-date">{new Date().toLocaleString()}</div>
 
         <div className="dash-tabs">
-          {(['hosts', 'hits', 'recon', 'overview', 'js'] as Tab[]).map(t => (
+          {(['summary', 'hosts', 'hits', 'recon', 'overview', 'js'] as Tab[]).map(t => (
             <button
               key={t}
               className={`tab-btn tab-${t}${tab === t ? ' active' : ''}`}
               onClick={() => setTab(t)}
             >
+              {t === 'summary'  && <>Summary</>}
               {t === 'hosts'    && <>Host Enumeration <span className="tab-count">{stats?.total ?? '—'}</span></>}
               {t === 'hits'     && <>Juicy Hits <span className="tab-count">{hits.length || '—'}</span></>}
               {t === 'recon'    && <>Recon</>}
@@ -131,9 +133,10 @@ export default function DashboardPage() {
         />
       )}
 
-      {tab === 'hits'  && <HitsTab hits={hits} />}
-      {tab === 'recon' && <ReconTab domain={domain} />}
-      {tab === 'js'    && <JSTab domain={domain} hosts={hosts} />}
+      {tab === 'summary' && <SummaryTab domain={domain} />}
+      {tab === 'hits'    && <HitsTab hits={hits} />}
+      {tab === 'recon'   && <ReconTab domain={domain} />}
+      {tab === 'js'      && <JSTab domain={domain} hosts={hosts} />}
     </div>
   )
 }
