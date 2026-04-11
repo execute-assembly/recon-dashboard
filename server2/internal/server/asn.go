@@ -3,10 +3,20 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 )
+
+func ComputeTotalIPs(cidr string) (int, error) {
+	_, ipNet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return 0, err
+	}
+	ones, bits := ipNet.Mask.Size()
+	return 1 << (bits - ones), nil
+}
 
 func FetchAsnData(asn string) (AsnResult, error) {
 	urlOverview := fmt.Sprintf("https://stat.ripe.net/data/as-overview/data.json?resource=%s", asn)
@@ -34,10 +44,21 @@ func FetchAsnData(asn string) (AsnResult, error) {
 		return AsnResult{}, err
 	}
 
-	result := AsnResult{
-		ASN:    asn,
-		Holder: overview.Data.Holder,
+	var total int
+	for _, r := range AsnPrefix.Data.Prefixes {
+		count, err := ComputeTotalIPs(r.Prefix)
+		if err != nil {
+			return AsnResult{}, err
+		}
+		total += count
 	}
+
+	result := AsnResult{
+		ASN:      asn,
+		Holder:   overview.Data.Holder,
+		TotalIps: total,
+	}
+
 	for _, r := range AsnPrefix.Data.Prefixes {
 		result.Prefixes = append(result.Prefixes, r.Prefix)
 	}

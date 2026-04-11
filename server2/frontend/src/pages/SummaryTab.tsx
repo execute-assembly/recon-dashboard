@@ -9,6 +9,7 @@ interface CountEntry {
 interface AsnResult {
   asn: string
   holder: string
+  total: number
   prefixes: string[]
 }
 
@@ -321,12 +322,19 @@ export default function SummaryTab({ domain }: { domain: string }) {
               <div style={{ fontSize: 11, color: 'var(--red)' }}>{asnError}</div>
             )}
             {asnData && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ fontSize: 12, color: 'var(--text)', fontWeight: 600 }}>{asnData.holder}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: "'Fira Code', monospace" }}>
-                  {asnData.prefixes.length} announced prefix{asnData.prefixes.length !== 1 ? 'es' : ''}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 600 }}>{asnData.holder}</div>
+                <div style={{ display: 'flex', gap: 16 }}>
+                  <div>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Prefixes</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--accent)', fontFamily: "'Fira Code', monospace" }}>{asnData.prefixes.length}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Total IPs</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--yellow)', fontFamily: "'Fira Code', monospace" }}>{asnData.total.toLocaleString()}</div>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 140, overflowY: 'auto' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 120, overflowY: 'auto' }}>
                   {asnData.prefixes.map(p => (
                     <div key={p} style={{ fontSize: 11, fontFamily: "'Fira Code', monospace", color: 'var(--text-dim)' }}>{p}</div>
                   ))}

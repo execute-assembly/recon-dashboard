@@ -46,6 +46,7 @@ type RipePrefixResponse struct {
 type AsnResult struct {
 	ASN      string   `json:"asn"`
 	Holder   string   `json:"holder"`
+	TotalIps int      `json:"total"`
 	Prefixes []string `json:"prefixes"`
 }
 
