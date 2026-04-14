@@ -35,13 +35,12 @@ sf_user_hdr="Sec-Fetch-User: ?1"
 RED='\e[31m'; GREEN='\e[32m'; YELLOW='\e[33m'; BLUE='\e[34m'
 BOLD="\e[1m"; ENDCOLOR='\e[0m'
 
-PROXY_FLAG=()
 HTTPX_TIMEOUT=3
 HTTPX_THREADS=200
 HTTPX_RL=500
 _proxy=$(cat "$proxy_check_file" 2>/dev/null | tr -d '[:space:]')
 if [[ -n "$_proxy" ]]; then
-    PROXY_FLAG=(-proxy "$_proxy")
+    export ALL_PROXY="${_proxy/socks5:\/\//socks5h://}"
     HTTPX_TIMEOUT=10
     HTTPX_THREADS=50
     HTTPX_RL=50
@@ -97,7 +96,6 @@ httpx_enrich() {
         -cname \
         -location \
         -json \
-        "${PROXY_FLAG[@]}" \
         -o "$httpx_dir/${DOMAIN}_httpx_raw.json" > /dev/null 2>&1 || true
 
     # Drop alt-port entries that are just redirects to the canonical HTTPS site
@@ -174,7 +172,6 @@ path_probe() {
         -H "$sf_site_hdr" \
         -H "$sf_user_hdr" \
         -json \
-        "${PROXY_FLAG[@]}" \
         -o "$httpx_dir/${DOMAIN}_path_hits_raw.json" > /dev/null 2>&1 || true
 
     python3 - "$httpx_dir/${DOMAIN}_path_hits_raw.json" <<'EOF' > "$httpx_dir/${DOMAIN}_path_hits.txt"
