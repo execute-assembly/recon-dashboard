@@ -36,9 +36,15 @@ RED='\e[31m'; GREEN='\e[32m'; YELLOW='\e[33m'; BLUE='\e[34m'
 BOLD="\e[1m"; ENDCOLOR='\e[0m'
 
 PROXY_FLAG=()
+HTTPX_TIMEOUT=3
+HTTPX_THREADS=200
+HTTPX_RL=500
 _proxy=$(cat "$proxy_check_file" 2>/dev/null | tr -d '[:space:]')
 if [[ -n "$_proxy" ]]; then
     PROXY_FLAG=(-proxy "$_proxy")
+    HTTPX_TIMEOUT=10
+    HTTPX_THREADS=50
+    HTTPX_RL=50
     echo -e "${BOLD}${YELLOW}[~]${ENDCOLOR} Proxy active: $_proxy"
 fi
 unset _proxy
@@ -66,8 +72,8 @@ httpx_enrich() {
     httpx -silent \
         -l "$subs_file" \
         -p "$PORTS" \
-        -t 200 \
-        -rl 500 \
+        -t "$HTTPX_THREADS" \
+        -rl "$HTTPX_RL" \
         -random-agent \
         -H "$accept_hdr" \
         -H "$accept_lang_hdr" \
@@ -79,7 +85,7 @@ httpx_enrich() {
         -H "$sf_mode_hdr" \
         -H "$sf_site_hdr" \
         -H "$sf_user_hdr" \
-        -timeout 3 \
+        -timeout "$HTTPX_TIMEOUT" \
         -retries 0 \
         -mc "$match_codes" \
         -status-code \
